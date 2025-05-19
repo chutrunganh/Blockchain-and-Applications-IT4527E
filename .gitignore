@@ -6,6 +6,24 @@
 deps/
 states/
 
+# Node modules
+node_modules/
+
+# Packages lock
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Build output
+dist/
+build/
+out/
+out-tsc/
+out-tsc-*
+
+# TypeScript cache
+*.tsbuildinfo
+
 # Debug info
 *.dbg.json
 *.tsbuildinfo
