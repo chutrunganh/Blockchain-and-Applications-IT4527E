@@ -223,5 +223,7 @@ Try to import this token in the metamask wallet (use the first address show in t
 
 Go to https://sepolia.etherscan.io/
 
+Currently still meet issue with verify the contract on sepolia etherscan, may be try this agin later when I have more time....
+
 
 
