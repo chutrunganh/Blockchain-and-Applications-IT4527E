@@ -16,7 +16,7 @@ module.exports = {
       chainId: 1337,
       accounts: {
         count: 5, // Limit to 5 test accounts instead of the default 20
-        accountsBalance: "10000000000000000000000" // 10000 ETH per account
+        accountsBalance: "1000000000000000000000000000" // 1000000000 ETH per account
       }
     }
   }

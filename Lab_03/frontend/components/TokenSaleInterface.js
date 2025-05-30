@@ -18,6 +18,7 @@ const saleABI = [
   "function contractCreationTime() view returns (uint256)",
   "function basePrice() view returns (uint256)",
   "function getCurrentPrice() view returns (uint256)",
+  "function getPriceBreakdown() view returns (uint256, uint256, uint256, uint256, uint256, uint256, uint256)",
   "function buyTokens(uint256) payable",
   "function sellTokens(uint256)",
   "function getContractInfo() view returns (uint256, uint256, uint256, uint256)",
@@ -36,13 +37,74 @@ export default function TokenSaleInterface({ provider, signer, account }) {
   const [buyAmount, setBuyAmount] = useState('')
   const [sellAmount, setSellAmount] = useState('')
   const [currentPrice, setCurrentPrice] = useState('0')
+  const [currentPriceRaw, setCurrentPriceRaw] = useState(0n) // Store raw BigInt for precision
+  const [previousPrice, setPreviousPrice] = useState('0')
+  const [priceChangeIndicator, setPriceChangeIndicator] = useState('')
   const [loading, setLoading] = useState(false)
   const [txHash, setTxHash] = useState('')
   const [mode, setMode] = useState('buy') // 'buy' or 'sell'
+  const [transactionHistory, setTransactionHistory] = useState([])
+  const [showPriceDetails, setShowPriceDetails] = useState(false)
+  const [priceBreakdown, setPriceBreakdown] = useState(null)
+
+  // Helper function to format price with high precision
+  const formatPriceWithPrecision = (priceInWei, decimals = 10) => {
+    if (!priceInWei) return '0.0000000000'
+    try {
+      const formatted = ethers.formatEther(priceInWei)
+      return parseFloat(formatted).toFixed(decimals)
+    } catch (error) {
+      return '0.0000000000'
+    }
+  }
 
   useEffect(() => {
     initializeContracts()
   }, [provider, signer])
+
+  // Auto-refresh price every 10 seconds to show dynamic changes
+  useEffect(() => {
+    if (!saleContract) return
+
+    const interval = setInterval(async () => {
+      try {
+        const price = await saleContract.getCurrentPrice()
+        const newPriceStr = ethers.formatEther(price)
+        
+        // Check for price changes
+        if (currentPrice !== '0' && newPriceStr !== currentPrice) {
+          const oldPrice = parseFloat(currentPrice)
+          const newPrice = parseFloat(newPriceStr)
+          
+          if (newPrice > oldPrice) {
+            setPriceChangeIndicator('↗️ +' + ((newPrice - oldPrice) / oldPrice * 100).toFixed(4) + '%')
+          } else if (newPrice < oldPrice) {
+            setPriceChangeIndicator('↘️ -' + ((oldPrice - newPrice) / oldPrice * 100).toFixed(4) + '%')
+          }
+          
+          // Clear indicator after 5 seconds
+          setTimeout(() => setPriceChangeIndicator(''), 5000)
+        }
+        
+        setPreviousPrice(currentPrice)
+        setCurrentPriceRaw(price)
+        setCurrentPrice(newPriceStr)
+        
+        // Update contract info with new price
+        setContractInfo(prev => ({
+          ...prev,
+          currentPrice: price
+        }))
+        
+        // Also update price breakdown
+        await loadPriceBreakdown(saleContract)
+      } catch (error) {
+        console.error('Error refreshing price:', error)
+      }
+    }, 10000) // Refresh every 10 seconds
+
+    return () => clearInterval(interval)
+  }, [saleContract])
 
   const initializeContracts = async () => {
     try {
@@ -86,18 +148,39 @@ export default function TokenSaleInterface({ provider, signer, account }) {
     }
   }
 
+  const loadPriceBreakdown = async (sale) => {
+    try {
+      const breakdown = await sale.getPriceBreakdown()
+      setPriceBreakdown({
+        currentPrice: breakdown[0],
+        basePrice: breakdown[1],
+        ethBalance: breakdown[2],
+        timeInSeconds: breakdown[3],
+        timeInDays: breakdown[4],
+        dailyInterestRate: breakdown[5],
+        compoundFactor: breakdown[6]
+      })
+    } catch (error) {
+      console.error('Error loading price breakdown:', error)
+    }
+  }
+
   const loadContractInfo = async (sale) => {
     try {
       const price = await sale.getCurrentPrice()
       const info = await sale.getContractInfo()
       
+      setCurrentPriceRaw(price) // Store raw BigInt
       setCurrentPrice(ethers.formatEther(price))
       setContractInfo({
-        currentPrice: ethers.formatEther(info[0]),
+        currentPrice: price, // Store raw BigInt instead of formatted string
         contractTokenBalance: ethers.formatUnits(info[1], 18),
         contractEthBalance: ethers.formatEther(info[2]),
         timeSinceCreation: Number(info[3]) // Time since contract creation
       })
+
+      // Load detailed price breakdown
+      await loadPriceBreakdown(sale)
     } catch (error) {
       console.error('Error loading contract info:', error)
     }
@@ -152,7 +235,11 @@ export default function TokenSaleInterface({ provider, signer, account }) {
       await tx.wait()
       console.log('Transaction confirmed!')
 
+      // Add to transaction history
+      addToHistory('BUY', buyAmount, ethers.formatEther(price), tx.hash)
+
       setBuyAmount('')
+      addToHistory('buy', tokenAmount, totalCost, tx.hash)
       await refreshData()
     } catch (error) {
       console.error('Error buying tokens:', error)
@@ -202,7 +289,12 @@ export default function TokenSaleInterface({ provider, signer, account }) {
       await tx.wait()
       console.log('Transaction confirmed!')
 
+      // Add to transaction history  
+      const price = await saleContract.getCurrentPrice()
+      addToHistory('SELL', sellAmount, ethers.formatEther(price), tx.hash)
+
       setSellAmount('')
+      addToHistory('sell', tokenAmount, currentPrice, tx.hash)
       await refreshData()
     } catch (error) {
       console.error('Error selling tokens:', error)
@@ -212,16 +304,64 @@ export default function TokenSaleInterface({ provider, signer, account }) {
     }
   }
 
+  const addToHistory = (type, amount, price, txHash) => {
+    const newTransaction = {
+      id: Date.now(),
+      type,
+      amount,
+      price,
+      txHash,
+      timestamp: new Date().toLocaleTimeString()
+    }
+    setTransactionHistory(prev => [newTransaction, ...prev.slice(0, 9)]) // Keep last 10
+  }
+
+  const getPriceBreakdown = () => {
+    if (!contractInfo.contractEthBalance || !contractInfo.timeSinceCreation) {
+      return null
+    }
+    
+    try {
+      const basePrice = 5 // 5 ETH
+      const ethBalance = parseFloat(contractInfo.contractEthBalance)
+      const daysElapsed = contractInfo.timeSinceCreation / (24 * 60 * 60) // Convert seconds to days
+      const interestRate = ethBalance / (2 * Math.pow(10, 9))
+      const priceIncrease = basePrice * interestRate * daysElapsed
+      
+      return {
+        basePrice: basePrice.toFixed(6),
+        ethBalance: ethBalance.toFixed(4),
+        daysElapsed: daysElapsed.toFixed(6),
+        interestRate,
+        priceIncrease: priceIncrease.toFixed(6),
+        totalPrice: (basePrice + priceIncrease).toFixed(6)
+      }
+    } catch (error) {
+      console.error('Error calculating price breakdown:', error)
+      return null
+    }
+  }
+
   const calculateEstimatedCost = () => {
-    if (!buyAmount || !currentPrice) return '0'
-    const cost = parseFloat(currentPrice) * parseFloat(buyAmount)
-    return cost.toFixed(6)
+    if (!buyAmount || !currentPriceRaw) return '0'
+    try {
+      const tokenAmount = ethers.parseUnits(buyAmount, 18)
+      const totalCost = (currentPriceRaw * tokenAmount) / ethers.parseUnits('1', 18)
+      return ethers.formatEther(totalCost)
+    } catch (error) {
+      return '0'
+    }
   }
 
   const calculateEstimatedReceive = () => {
-    if (!sellAmount || !currentPrice) return '0'
-    const receive = parseFloat(currentPrice) * parseFloat(sellAmount)
-    return receive.toFixed(6)
+    if (!sellAmount || !currentPriceRaw) return '0'
+    try {
+      const tokenAmount = ethers.parseUnits(sellAmount, 18)
+      const totalReceive = (currentPriceRaw * tokenAmount) / ethers.parseUnits('1', 18)
+      return ethers.formatEther(totalReceive)
+    } catch (error) {
+      return '0'
+    }
   }
 
   const formatTimeAgo = (seconds) => {
@@ -254,7 +394,45 @@ export default function TokenSaleInterface({ provider, signer, account }) {
           <div className="bg-green-50 p-4 rounded-lg">
             <h3 className="text-lg font-semibold text-green-800 mb-3">Contract Status</h3>
             <div className="space-y-2 text-sm">
-              <p><span className="font-medium">Current Price:</span> {parseFloat(contractInfo.currentPrice).toFixed(6)} ETH</p>
+              <p>
+                <span className="font-medium">Current Price:</span> 
+                <span className="font-mono text-lg ml-2">{formatPriceWithPrecision(contractInfo.currentPrice, 12)} ETH</span>
+                {priceChangeIndicator && (
+                  <span className="ml-2 text-sm bg-yellow-100 px-2 py-1 rounded animate-pulse">
+                    {priceChangeIndicator}
+                  </span>
+                )}
+              </p>
+              
+              {/* Price breakdown button */}
+              <div className="flex items-center gap-2 mt-1">
+                <button
+                  onClick={() => setShowPriceDetails(!showPriceDetails)}
+                  className="text-xs text-blue-600 hover:text-blue-800 underline"
+                >
+                  {showPriceDetails ? 'Hide' : 'Show'} Price Breakdown
+                </button>
+                <button
+                  onClick={() => refreshData()}
+                  className="text-xs bg-blue-100 hover:bg-blue-200 px-2 py-1 rounded"
+                >
+                  🔄 Refresh Price
+                </button>
+              </div>
+              
+              {/* Detailed price breakdown */}
+              {showPriceDetails && priceBreakdown && (
+                <div className="mt-2 p-3 bg-blue-50 rounded text-xs space-y-1">
+                  <p><strong>Base Price:</strong> {ethers.formatEther(priceBreakdown.basePrice)} ETH</p>
+                  <p><strong>ETH Balance:</strong> {ethers.formatEther(priceBreakdown.ethBalance)} ETH</p>
+                  <p><strong>Time Elapsed:</strong> {ethers.formatUnits(priceBreakdown.timeInDays, 18)} days</p>
+                  <p><strong>Daily Interest Rate:</strong> {(parseFloat(ethers.formatUnits(priceBreakdown.dailyInterestRate, 18)) * 100).toFixed(8)}% per day</p>
+                  <p><strong>Compound Factor:</strong> {ethers.formatUnits(priceBreakdown.compoundFactor, 18)}</p>
+                  <p><strong>Formula:</strong> BasePrice × (1 + InterestRate)^Days (compound interest)</p>
+                  <p><strong>Calculated Price:</strong> {ethers.formatEther(priceBreakdown.currentPrice)} ETH</p>
+                </div>
+              )}
+              
               <p><span className="font-medium">Available Tokens:</span> {parseFloat(contractInfo.contractTokenBalance).toLocaleString()}</p>
               <p><span className="font-medium">Contract ETH:</span> {parseFloat(contractInfo.contractEthBalance).toFixed(4)} ETH</p>
               <p><span className="font-medium">Contract Age:</span> {contractInfo.timeSinceCreation ? formatTimeAgo(contractInfo.timeSinceCreation) : 'N/A'}</p>
@@ -318,9 +496,12 @@ export default function TokenSaleInterface({ provider, signer, account }) {
               </div>
               
               {buyAmount && (
-                <div className="bg-white p-3 rounded-md">
+                <div className="bg-white p-3 rounded-md border-l-4 border-blue-500">
                   <p className="text-sm text-gray-600">
-                    Estimated Cost: <span className="font-bold text-blue-600">{calculateEstimatedCost()} ETH</span>
+                    Estimated Cost: <span className="font-bold text-blue-600 font-mono text-lg">{parseFloat(calculateEstimatedCost()).toFixed(10)} ETH</span>
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {buyAmount} tokens × {formatPriceWithPrecision(contractInfo.currentPrice, 12)} ETH/token
                   </p>
                 </div>
               )}
@@ -394,7 +575,33 @@ export default function TokenSaleInterface({ provider, signer, account }) {
 
         {/* Price Information */}
         <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-          <h4 className="font-semibold text-yellow-800 mb-2">Dynamic Pricing Information</h4>
+          <div className="flex justify-between items-center mb-2">
+            <h4 className="font-semibold text-yellow-800">Dynamic Pricing Information</h4>
+            <button
+              onClick={() => setShowPriceDetails(!showPriceDetails)}
+              className="text-sm text-yellow-600 hover:text-yellow-800"
+            >
+              {showPriceDetails ? 'Hide Details' : 'Show Details'}
+            </button>
+          </div>
+          
+          {showPriceDetails && (() => {
+            const breakdown = getPriceBreakdown();
+            return breakdown && (
+              <div className="bg-white p-3 rounded-md mb-3 text-sm">
+                <h5 className="font-medium mb-2">Price Calculation Breakdown:</h5>
+                <div className="space-y-1 text-xs">
+                  <p>• Base Price: {breakdown.basePrice} ETH</p>
+                  <p>• Contract ETH Balance: {breakdown.ethBalance} ETH</p>
+                  <p>• Days Elapsed: {breakdown.daysElapsed} days</p>
+                  <p>• Interest Rate: {(breakdown.interestRate * 100).toExponential(2)}% per day</p>
+                  <p>• Price Increase: {breakdown.priceIncrease} ETH</p>
+                  <p className="font-bold">• Total Current Price: {breakdown.totalPrice} ETH</p>
+                </div>
+              </div>
+            );
+          })()}
+          
           <p className="text-sm text-yellow-700">
             • Token price starts at 5 ETH and increases over time<br/>
             • Interest Rate = Contract ETH Balance ÷ (2 × 10⁹)<br/>
@@ -402,6 +609,100 @@ export default function TokenSaleInterface({ provider, signer, account }) {
             • More ETH in contract = faster price increases
           </p>
         </div>
+
+        {/* Transaction History */}
+        {transactionHistory.length > 0 && (
+          <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-md">
+            <h4 className="font-semibold text-gray-800 mb-3">Recent Transactions</h4>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {transactionHistory.map((tx) => (
+                <div key={tx.id} className="bg-white p-2 rounded border text-sm">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className={`font-bold ${tx.type === 'BUY' ? 'text-blue-600' : 'text-red-600'}`}>
+                        {tx.type}
+                      </span>
+                      <span className="ml-2">{tx.amount} tokens @ {parseFloat(tx.price).toFixed(6)} ETH</span>
+                    </div>
+                    <span className="text-gray-500 text-xs">{tx.timestamp}</span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1 truncate">
+                    TX: {tx.txHash}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Transaction History */}
+        {transactionHistory.length > 0 && (
+          <div className="mt-6 p-4 bg-white border border-gray-200 rounded-md shadow-sm">
+            <h4 className="font-semibold text-gray-800 mb-3">Transaction History</h4>
+            <div className="space-y-2">
+              {transactionHistory.map(tx => (
+                <div key={tx.id} className="p-3 bg-gray-50 rounded-md">
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>{tx.timestamp}</span>
+                    <span className="font-medium">{tx.type === 'buy' ? 'Purchased' : 'Sold'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-gray-800">
+                    <span>{parseFloat(tx.amount).toLocaleString()} G13 Tokens</span>
+                    <span>{parseFloat(tx.price).toFixed(4)} ETH</span>
+                  </div>
+                  <div className="mt-1">
+                    <a
+                      href={`https://etherscan.io/tx/${tx.txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      View on Etherscan
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Price Calculation Details */}
+        {showPriceDetails && (() => {
+          const breakdown = getPriceBreakdown();
+          return breakdown && (
+            <div className="mt-6 p-4 bg-white border border-gray-200 rounded-md shadow-sm">
+              <h4 className="font-semibold text-gray-800 mb-3">Price Calculation Details</h4>
+              <div className="space-y-2">
+                <p className="text-sm text-gray-600">
+                  • Base Price: <span className="font-medium">{breakdown.basePrice} ETH</span>
+                </p>
+                <p className="text-sm text-gray-600">
+                  • ETH Balance in Contract: <span className="font-medium">{breakdown.ethBalance} ETH</span>
+                </p>
+                <p className="text-sm text-gray-600">
+                  • Days Elapsed Since Creation: <span className="font-medium">{breakdown.daysElapsed} days</span>
+                </p>
+                <p className="text-sm text-gray-600">
+                  • Interest Rate: <span className="font-medium">{(breakdown.interestRate * 100).toFixed(6)}%</span>
+                </p>
+                <p className="text-sm text-gray-600">
+                  • Price Increase: <span className="font-medium">{breakdown.priceIncrease} ETH</span>
+                </p>
+                <p className="text-sm text-gray-600">
+                  • Total Price: <span className="font-medium">{breakdown.totalPrice} ETH</span>
+                </p>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Toggle Price Details Button */}
+        <button
+          onClick={() => setShowPriceDetails(!showPriceDetails)}
+          className="mt-4 px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
+        >
+          {showPriceDetails ? 'Hide Price Details' : 'Show Price Details'}
+        </button>
       </div>
     </div>
   )
