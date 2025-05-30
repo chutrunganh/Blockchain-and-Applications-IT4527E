@@ -31,3 +31,21 @@ out-tsc-*
 # Optional
 .env
 .env.local
+
+
+coverage
+coverage.json
+typechain
+typechain-types
+
+# Hardhat files
+cache
+artifacts
+
+# Deployments
+## Uncomment if you want to save deployments
+deployments/*
+!deployments/.gitkeep
+
+# IDE
+.idea

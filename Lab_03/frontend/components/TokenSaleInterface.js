@@ -1,0 +1,389 @@
+import { useState, useEffect } from 'react'
+import { ethers } from 'ethers'
+import deploymentInfo from '../deployment.json'
+
+// ABI for the contracts
+const tokenABI = [
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function totalSupply() view returns (uint256)",
+  "function balanceOf(address) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+  "function approve(address spender, uint256 amount) returns (bool)"
+]
+
+const saleABI = [
+  "function token() view returns (address)",
+  "function owner() view returns (address)",
+  "function contractCreationTime() view returns (uint256)",
+  "function basePrice() view returns (uint256)",
+  "function getCurrentPrice() view returns (uint256)",
+  "function buyTokens(uint256) payable",
+  "function sellTokens(uint256)",
+  "function getContractInfo() view returns (uint256, uint256, uint256, uint256)",
+  "event TokensPurchased(address indexed buyer, uint256 amount, uint256 cost)",
+  "event TokensSold(address indexed seller, uint256 amount, uint256 ethReceived)",
+  "event PriceUpdated(uint256 newPrice)"
+]
+
+export default function TokenSaleInterface({ provider, signer, account }) {
+  const [tokenContract, setTokenContract] = useState(null)
+  const [saleContract, setSaleContract] = useState(null)
+  const [tokenInfo, setTokenInfo] = useState({})
+  const [contractInfo, setContractInfo] = useState({})
+  const [userTokenBalance, setUserTokenBalance] = useState('0')
+  const [userEthBalance, setUserEthBalance] = useState('0')
+  const [buyAmount, setBuyAmount] = useState('')
+  const [sellAmount, setSellAmount] = useState('')
+  const [currentPrice, setCurrentPrice] = useState('0')
+  const [loading, setLoading] = useState(false)
+  const [txHash, setTxHash] = useState('')
+  const [mode, setMode] = useState('buy') // 'buy' or 'sell'
+
+  useEffect(() => {
+    initializeContracts()
+  }, [provider, signer])
+
+  const initializeContracts = async () => {
+    try {
+      if (!deploymentInfo.tokenAddress || !deploymentInfo.saleAddress) {
+        console.error('Deployment addresses not found. Please deploy contracts first.')
+        return
+      }
+
+      const token = new ethers.Contract(deploymentInfo.tokenAddress, tokenABI, provider)
+      const sale = new ethers.Contract(deploymentInfo.saleAddress, saleABI, provider)
+
+      setTokenContract(token)
+      setSaleContract(sale)
+
+      await loadTokenInfo(token)
+      await loadContractInfo(sale)
+      
+      if (account) {
+        await loadUserBalances(token, sale)
+      }
+    } catch (error) {
+      console.error('Error initializing contracts:', error)
+    }
+  }
+
+  const loadTokenInfo = async (token) => {
+    try {
+      const name = await token.name()
+      const symbol = await token.symbol()
+      const totalSupply = await token.totalSupply()
+      const decimals = await token.decimals()
+
+      setTokenInfo({
+        name,
+        symbol,
+        totalSupply: ethers.formatUnits(totalSupply, decimals),
+        decimals
+      })
+    } catch (error) {
+      console.error('Error loading token info:', error)
+    }
+  }
+
+  const loadContractInfo = async (sale) => {
+    try {
+      const price = await sale.getCurrentPrice()
+      const info = await sale.getContractInfo()
+      
+      setCurrentPrice(ethers.formatEther(price))
+      setContractInfo({
+        currentPrice: ethers.formatEther(info[0]),
+        contractTokenBalance: ethers.formatUnits(info[1], 18),
+        contractEthBalance: ethers.formatEther(info[2]),
+        timeSinceCreation: Number(info[3]) // Time since contract creation
+      })
+    } catch (error) {
+      console.error('Error loading contract info:', error)
+    }
+  }
+
+  const loadUserBalances = async (token, sale) => {
+    try {
+      const tokenBalance = await token.balanceOf(account)
+      const ethBalance = await provider.getBalance(account)
+
+      setUserTokenBalance(ethers.formatUnits(tokenBalance, 18))
+      setUserEthBalance(ethers.formatEther(ethBalance))
+    } catch (error) {
+      console.error('Error loading user balances:', error)
+    }
+  }
+
+  const refreshData = async () => {
+    if (tokenContract && saleContract) {
+      await loadContractInfo(saleContract)
+      if (account) {
+        await loadUserBalances(tokenContract, saleContract)
+      }
+    }
+  }
+
+  const handleBuyTokens = async () => {
+    if (!buyAmount || !saleContract || !signer) return
+
+    setLoading(true)
+    setTxHash('')
+
+    try {
+      const tokenAmount = ethers.parseUnits(buyAmount, 18)
+      const price = await saleContract.getCurrentPrice()
+      const totalCost = (price * BigInt(buyAmount)) / ethers.parseUnits('1', 18)
+
+      const saleWithSigner = saleContract.connect(signer)
+      const tx = await saleWithSigner.buyTokens(tokenAmount, {
+        value: totalCost,
+        gasLimit: 300000
+      })
+
+      setTxHash(tx.hash)
+      console.log('Transaction sent:', tx.hash)
+
+      await tx.wait()
+      console.log('Transaction confirmed!')
+
+      setBuyAmount('')
+      await refreshData()
+    } catch (error) {
+      console.error('Error buying tokens:', error)
+      alert('Error buying tokens: ' + error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSellTokens = async () => {
+    if (!sellAmount || !saleContract || !tokenContract || !signer) return
+
+    setLoading(true)
+    setTxHash('')
+
+    try {
+      const tokenAmount = ethers.parseUnits(sellAmount, 18)
+
+      // First approve the sale contract to spend tokens
+      const tokenWithSigner = tokenContract.connect(signer)
+      const approveTx = await tokenWithSigner.approve(deploymentInfo.saleAddress, tokenAmount)
+      await approveTx.wait()
+
+      // Then sell the tokens
+      const saleWithSigner = saleContract.connect(signer)
+      const tx = await saleWithSigner.sellTokens(tokenAmount, {
+        gasLimit: 300000
+      })
+
+      setTxHash(tx.hash)
+      console.log('Transaction sent:', tx.hash)
+
+      await tx.wait()
+      console.log('Transaction confirmed!')
+
+      setSellAmount('')
+      await refreshData()
+    } catch (error) {
+      console.error('Error selling tokens:', error)
+      alert('Error selling tokens: ' + error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const calculateEstimatedCost = () => {
+    if (!buyAmount || !currentPrice) return '0'
+    const cost = parseFloat(currentPrice) * parseFloat(buyAmount)
+    return cost.toFixed(6)
+  }
+
+  const calculateEstimatedReceive = () => {
+    if (!sellAmount || !currentPrice) return '0'
+    const receive = parseFloat(currentPrice) * parseFloat(sellAmount)
+    return receive.toFixed(6)
+  }
+
+  const formatTimeAgo = (seconds) => {
+    const minutes = Math.floor(seconds / 60)
+    const hours = Math.floor(minutes / 60)
+    const days = Math.floor(hours / 24)
+
+    if (days > 0) return `${days} day(s)`
+    if (hours > 0) return `${hours} hour(s)`
+    if (minutes > 0) return `${minutes} minute(s)`
+    return `${seconds} second(s)`
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <h1 className="text-3xl font-bold text-gray-800 mb-6">Group13 Token Exchange</h1>
+        
+        {/* Token Information */}
+        <div className="grid md:grid-cols-2 gap-6 mb-6">
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold text-blue-800 mb-3">Token Information</h3>
+            <div className="space-y-2 text-sm">
+              <p><span className="font-medium">Name:</span> {tokenInfo.name}</p>
+              <p><span className="font-medium">Symbol:</span> {tokenInfo.symbol}</p>
+              <p><span className="font-medium">Total Supply:</span> {parseFloat(tokenInfo.totalSupply).toLocaleString()} tokens</p>
+            </div>
+          </div>
+
+          <div className="bg-green-50 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold text-green-800 mb-3">Contract Status</h3>
+            <div className="space-y-2 text-sm">
+              <p><span className="font-medium">Current Price:</span> {parseFloat(contractInfo.currentPrice).toFixed(6)} ETH</p>
+              <p><span className="font-medium">Available Tokens:</span> {parseFloat(contractInfo.contractTokenBalance).toLocaleString()}</p>
+              <p><span className="font-medium">Contract ETH:</span> {parseFloat(contractInfo.contractEthBalance).toFixed(4)} ETH</p>
+              <p><span className="font-medium">Contract Age:</span> {contractInfo.timeSinceCreation ? formatTimeAgo(contractInfo.timeSinceCreation) : 'N/A'}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* User Balances */}
+        {account && (
+          <div className="bg-gray-50 p-4 rounded-lg mb-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-3">Your Balances</h3>
+            <div className="grid md:grid-cols-2 gap-4 text-sm">
+              <p><span className="font-medium">G13 Tokens:</span> {parseFloat(userTokenBalance).toLocaleString()}</p>
+              <p><span className="font-medium">ETH:</span> {parseFloat(userEthBalance).toFixed(4)} ETH</p>
+            </div>
+          </div>
+        )}
+
+        {/* Mode Selection */}
+        <div className="flex space-x-4 mb-6">
+          <button
+            onClick={() => setMode('buy')}
+            className={`px-6 py-2 rounded-lg font-medium ${
+              mode === 'buy'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Buy Tokens
+          </button>
+          <button
+            onClick={() => setMode('sell')}
+            className={`px-6 py-2 rounded-lg font-medium ${
+              mode === 'sell'
+                ? 'bg-red-500 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Sell Tokens
+          </button>
+        </div>
+
+        {/* Buy/Sell Interface */}
+        {mode === 'buy' ? (
+          <div className="bg-blue-50 p-6 rounded-lg">
+            <h3 className="text-xl font-semibold text-blue-800 mb-4">Buy Tokens</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Number of Tokens to Buy
+                </label>
+                <input
+                  type="number"
+                  value={buyAmount}
+                  onChange={(e) => setBuyAmount(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter amount"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              
+              {buyAmount && (
+                <div className="bg-white p-3 rounded-md">
+                  <p className="text-sm text-gray-600">
+                    Estimated Cost: <span className="font-bold text-blue-600">{calculateEstimatedCost()} ETH</span>
+                  </p>
+                </div>
+              )}
+
+              <button
+                onClick={handleBuyTokens}
+                disabled={!buyAmount || loading || !account}
+                className="w-full bg-blue-500 text-white py-3 px-4 rounded-md font-medium hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Processing...' : 'Buy Tokens'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-red-50 p-6 rounded-lg">
+            <h3 className="text-xl font-semibold text-red-800 mb-4">Sell Tokens</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Number of Tokens to Sell
+                </label>
+                <input
+                  type="number"
+                  value={sellAmount}
+                  onChange={(e) => setSellAmount(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                  placeholder="Enter amount"
+                  min="0"
+                  step="0.01"
+                  max={userTokenBalance}
+                />
+              </div>
+              
+              {sellAmount && (
+                <div className="bg-white p-3 rounded-md">
+                  <p className="text-sm text-gray-600">
+                    You'll Receive: <span className="font-bold text-red-600">{calculateEstimatedReceive()} ETH</span>
+                  </p>
+                </div>
+              )}
+
+              <button
+                onClick={handleSellTokens}
+                disabled={!sellAmount || loading || !account || parseFloat(sellAmount) > parseFloat(userTokenBalance)}
+                className="w-full bg-red-500 text-white py-3 px-4 rounded-md font-medium hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Processing...' : 'Sell Tokens'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Transaction Status */}
+        {txHash && (
+          <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+            <p className="text-sm text-yellow-800">
+              <span className="font-medium">Transaction Hash:</span>
+              <br />
+              <code className="text-xs break-all">{txHash}</code>
+            </p>
+          </div>
+        )}
+
+        {/* Refresh Button */}
+        <button
+          onClick={refreshData}
+          className="mt-4 px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
+        >
+          Refresh Data
+        </button>
+
+        {/* Price Information */}
+        <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+          <h4 className="font-semibold text-yellow-800 mb-2">Dynamic Pricing Information</h4>
+          <p className="text-sm text-yellow-700">
+            • Token price starts at 5 ETH and increases over time<br/>
+            • Interest Rate = Contract ETH Balance ÷ (2 × 10⁹)<br/>
+            • Price increases continuously since contract creation<br/>
+            • More ETH in contract = faster price increases
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
