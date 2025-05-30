@@ -110,7 +110,7 @@ export default function Home() {
               <ul className="list-disc list-inside ml-4 mt-1">
                 <li>Network Name: Hardhat</li>
                 <li>RPC URL: http://127.0.0.1:8545</li>
-                <li>Chain ID: 31337</li>
+                <li>Chain ID: 1337</li>
                 <li>Currency Symbol: ETH</li>
               </ul>
               <li>Import a Hardhat account using one of the private keys</li>

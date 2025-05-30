@@ -133,7 +133,12 @@ export default function TokenSaleInterface({ provider, signer, account }) {
     try {
       const tokenAmount = ethers.parseUnits(buyAmount, 18)
       const price = await saleContract.getCurrentPrice()
-      const totalCost = (price * BigInt(buyAmount)) / ethers.parseUnits('1', 18)
+      const totalCost = (price * tokenAmount) / ethers.parseUnits('1', 18)
+
+      console.log('Buy transaction details:')
+      console.log('- Token amount:', ethers.formatUnits(tokenAmount, 18), 'tokens')
+      console.log('- Current price:', ethers.formatEther(price), 'ETH per token')
+      console.log('- Total cost:', ethers.formatEther(totalCost), 'ETH')
 
       const saleWithSigner = saleContract.connect(signer)
       const tx = await saleWithSigner.buyTokens(tokenAmount, {
@@ -151,7 +156,21 @@ export default function TokenSaleInterface({ provider, signer, account }) {
       await refreshData()
     } catch (error) {
       console.error('Error buying tokens:', error)
-      alert('Error buying tokens: ' + error.message)
+      
+      let errorMessage = 'Unknown error occurred'
+      if (error.code === 'INSUFFICIENT_FUNDS') {
+        errorMessage = 'Insufficient ETH balance to complete transaction'
+      } else if (error.code === 'UNPREDICTABLE_GAS_LIMIT') {
+        errorMessage = 'Transaction will likely fail. Check contract conditions.'
+      } else if (error.message.includes('insufficient funds')) {
+        errorMessage = 'Insufficient funds for gas + transaction value'
+      } else if (error.message.includes('execution reverted')) {
+        errorMessage = 'Transaction reverted: ' + error.reason || 'Check contract requirements'
+      } else {
+        errorMessage = error.message
+      }
+      
+      alert('Error buying tokens: ' + errorMessage)
     } finally {
       setLoading(false)
     }

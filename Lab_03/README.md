@@ -123,7 +123,7 @@ Then performs some initial setup:
 
 
 
-<!-- ### Step 3: Configure MetaMask
+## Step 3: Configure MetaMask
 
 1. **Add Hardhat Network:**
    - Open MetaMask
@@ -132,9 +132,12 @@ Then performs some initial setup:
    - Fill in:
      - Network Name: `Hardhat`
      - New RPC URL: `http://127.0.0.1:8545`
-     - Chain ID: `31337`
+     - Chain ID: `1337`
      - Currency Symbol: `ETH`
    - Click "Save"
+
+
+   ![alt text](image.png)
 
 2. **Import Test Account:**
    - Click on the account icon in MetaMask
@@ -143,9 +146,9 @@ Then performs some initial setup:
    - Click "Import"
 
 3. **Switch to Hardhat Network:**
-   - Make sure MetaMask is connected to the "Hardhat" network you just added -->
+   - Make sure MetaMask is connected to the "Hardhat" network you just added
 
-## Step 3: Start Web Interface
+## Step 4: Start Web Interface
 
 Open a third terminal and run:
 ```bash
@@ -158,7 +161,7 @@ Then, it will require you to connect your MetaMask wallet (you should already in
 
 ![Image 1](./images/image.png)
 
-## Step 4: Test the Token Sale
+## Step 5: Test the Token Sale
 
 1. **Connect Wallet:**
    - Click "Connect Wallet" on the web interface
