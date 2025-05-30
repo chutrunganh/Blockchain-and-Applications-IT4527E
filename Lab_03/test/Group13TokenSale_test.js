@@ -198,18 +198,27 @@ describe("Group13TokenSale - Dynamic Pricing", function () {
 
       const contractInfo = await sale.getContractInfo();
       const ethBalance = contractInfo[2];
-      const interestRate = ethBalance / (2n * 10n**9n);
+      
+      // Convert to ETH for calculation (avoiding BigInt division issues)
+      const ethBalanceInEth = Number(ethers.formatEther(ethBalance));
+      const interestRatePerDay = ethBalanceInEth / (2 * 10**9);
+      const basePrice = Number(ethers.formatEther(await sale.basePrice()));
 
-      console.log(`Contract ETH balance: ${ethers.formatEther(ethBalance)} ETH`);
-      console.log(`Interest rate calculation: ${ethBalance} / (2 * 10^9) = ${interestRate}`);
-      console.log(`Interest rate in ETH: ${ethers.formatEther(interestRate)} ETH`);
+      console.log(`Contract ETH balance: ${ethBalanceInEth} ETH`);
+      console.log(`Interest rate per day: ${interestRatePerDay.toExponential(6)}`);
+      console.log(`Base price: ${basePrice} ETH`);
 
       // Simulate time passing and check price increase
       await ethers.provider.send("evm_increaseTime", [86400]); // 1 day
       await ethers.provider.send("evm_mine");
 
       const priceAfterTime = await sale.getCurrentPrice();
+      const expectedIncrease = basePrice * interestRatePerDay * 1; // 1 day
+      const expectedPrice = basePrice + expectedIncrease;
+
       console.log(`Price after 1 day: ${ethers.formatEther(priceAfterTime)} ETH`);
+      console.log(`Expected price increase: ${expectedIncrease.toExponential(6)} ETH`);
+      console.log(`Expected total price: ${expectedPrice} ETH`);
 
       // Add more ETH to contract and see effect
       await owner.sendTransaction({
@@ -218,12 +227,12 @@ describe("Group13TokenSale - Dynamic Pricing", function () {
       });
 
       const newContractInfo = await sale.getContractInfo();
-      const newEthBalance = newContractInfo[2];
-      const newInterestRate = newEthBalance / (2n * 10n**9n);
+      const newEthBalance = Number(ethers.formatEther(newContractInfo[2]));
+      const newInterestRatePerDay = newEthBalance / (2 * 10**9);
 
       console.log(`\\nAfter adding 500 ETH:`);
-      console.log(`New ETH balance: ${ethers.formatEther(newEthBalance)} ETH`);
-      console.log(`New interest rate: ${ethers.formatEther(newInterestRate)} ETH`);
+      console.log(`New ETH balance: ${newEthBalance} ETH`);
+      console.log(`New interest rate per day: ${newInterestRatePerDay.toExponential(6)}`);
 
       // Wait another day and check price
       await ethers.provider.send("evm_increaseTime", [86400]); // 1 day
@@ -231,6 +240,10 @@ describe("Group13TokenSale - Dynamic Pricing", function () {
 
       const finalPrice = await sale.getCurrentPrice();
       console.log(`Price after adding ETH and 1 more day: ${ethers.formatEther(finalPrice)} ETH`);
+
+      // Verify that higher ETH balance leads to faster price increases
+      expect(newInterestRatePerDay).to.be.gt(interestRatePerDay);
+      expect(finalPrice).to.be.gt(priceAfterTime);
     });
   });
 

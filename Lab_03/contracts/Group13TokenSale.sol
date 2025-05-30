@@ -2,59 +2,56 @@
 pragma solidity ^0.8.20;
 
 import "./Group13Token.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title Group13TokenSale
  * @dev Smart contract for buying and selling tokens with dynamic pricing based on ETH balance and time
  */
-contract Group13TokenSale {
+contract Group13TokenSale is Ownable {
     Group13Token public token;
-    address payable public owner;
     uint256 public contractCreationTime; // Time when contract was created
     uint256 public basePrice = 5 ether; // Initial price: 5 ETH per token
     
+    // Define events: Buying and selling tokens, price updates
     event TokensPurchased(address indexed buyer, uint256 amount, uint256 cost);
     event TokensSold(address indexed seller, uint256 amount, uint256 ethReceived);
     event PriceUpdated(uint256 newPrice);
     
-    modifier onlyOwnerOrContract() {
-        require(msg.sender == owner || msg.sender == address(this), "Not authorized");
-        _;
-    }
-    
-    constructor(address tokenAddress) {
+    constructor(address tokenAddress) Ownable(msg.sender) {
         token = Group13Token(tokenAddress);
-        owner = payable(msg.sender);
         contractCreationTime = block.timestamp; // Set creation time
     }
     
     /**
      * @dev Calculate current token price based on ETH balance and time since creation
-     * Formula: InterestRate = ETH_balance / (2 * 10^9)
-     * Price increases over time based on this interest rate
+     * Formula from Lab requirements:
+     * - InterestRate = ETH_balance_in_ETH / (2 * 10^9)
+     * - Price = BasePrice * (1 + InterestRate * DaysElapsed)
+     * - Recalculated on each transaction (buy/sell)
      */
     function getCurrentPrice() public view returns (uint256) {
         uint256 ethBalance = address(this).balance;
-        uint256 timePassed = block.timestamp - contractCreationTime; // Time since contract creation
+        uint256 timePassed = block.timestamp - contractCreationTime;
         
-        // Convert ETH balance from wei to ETH for calculation
+        // Convert time to days (with fractional precision)
+        uint256 daysElapsed = timePassed / 1 days;
+        
+        // Convert ETH balance from wei to ETH
         uint256 ethBalanceInEth = ethBalance / 1 ether;
         
-        // Interest rate = ETH_balance_in_ETH / (2 * 10^9)
-        // To avoid precision loss, we'll use a different approach
-        uint256 timeInDays = timePassed / 1 days;
+        // Calculate interest rate: ETH_balance / (2 * 10^9)
+        // Since this results in very small numbers, we need to handle precision carefully
         
-        // Calculate price increase based on the formula:
-        // priceIncrease = basePrice * (ethBalanceInEth / (2 * 10^9)) * timeInDays
-        // Since this would be extremely small, let's scale it appropriately
-        
-        if (timeInDays == 0) {
-            return basePrice;
+        if (daysElapsed == 0) {
+            return basePrice; // No time passed, return base price
         }
         
-        // Scale the calculation to get meaningful price increases
-        // Using a more reasonable scaling factor
-        uint256 priceIncrease = (basePrice * ethBalanceInEth * timeInDays) / (2 * 10**6); // Scaled from 10^9 to 10^6 for testing
+        // Interest calculation: basePrice * (ethBalance / 2*10^9) * daysElapsed
+        // To avoid precision loss with small numbers, we'll use scaled arithmetic
+        
+        // priceIncrease = basePrice * ethBalanceInEth * daysElapsed / (2 * 10^9)
+        uint256 priceIncrease = (basePrice * ethBalanceInEth * daysElapsed) / (2 * 10**9);
         
         return basePrice + priceIncrease;
     }
@@ -125,16 +122,16 @@ contract Group13TokenSale {
     /**
      * @dev Owner can add ETH to the contract
      */
-    function addEth() external payable onlyOwnerOrContract() {
+    function addEth() external payable onlyOwner {
         require(msg.value > 0, "Must send ETH");
     }
     
     /**
      * @dev Owner can withdraw ETH (for emergencies)
      */
-    function withdrawEth(uint256 amount) external onlyOwnerOrContract() {
+    function withdrawEth(uint256 amount) external onlyOwner {
         require(address(this).balance >= amount, "Insufficient balance");
-        owner.transfer(amount);
+        payable(owner()).transfer(amount);
     }
     
     /**

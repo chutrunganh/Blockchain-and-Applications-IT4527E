@@ -1,6 +1,6 @@
 require("@nomicfoundation/hardhat-toolbox");
-require("dotenv").config();
 
+/** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
     version: "0.8.20",
@@ -13,21 +13,11 @@ module.exports = {
   },
   networks: {
     hardhat: {
-      chainId: 1337
-    },
-    localhost: {
-      url: "http://127.0.0.1:8545"
-    },
-    ...(process.env.SEPOLIA_RPC_URL && process.env.PRIVATE_KEY ? {
-      sepolia: {
-        url: process.env.SEPOLIA_RPC_URL,
-        accounts: [process.env.PRIVATE_KEY],
+      chainId: 1337,
+      accounts: {
+        count: 5, // Limit to 5 test accounts instead of the default 20
+        accountsBalance: "10000000000000000000000" // 10000 ETH per account
       }
-    } : {})
-  },
-  ...(process.env.ETHERSCAN_API_KEY ? {
-    etherscan: {
-      apiKey: process.env.ETHERSCAN_API_KEY,
     }
-  } : {})
+  }
 };
