@@ -1,3 +1,7 @@
+/**
+ * This file is just for some of my testing, no need to care this for the logic of the project.
+ */
+
 const hre = require("hardhat");
 
 async function main() {

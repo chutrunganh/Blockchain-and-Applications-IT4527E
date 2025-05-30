@@ -26,9 +26,10 @@ contract Group13TokenSale is Ownable {
     /**
      * @dev Calculate current token price based on ETH balance and time since creation
      * Formula from Lab requirements:
-     * - InterestRate = ETH_balance_in_ETH / (2 * 10^9)
-     * - Price = BasePrice * (1 + InterestRate * DaysElapsed)
-     * - Recalculated on each transaction (buy/sell)
+     * 1. Base price: 5 ETH per token
+     * 2. Interest rate: ETH_balance / (2 * 10^9) per day
+     * 3. Price calculation: Price = BasePrice + (BasePrice * InterestRate * DaysElapsed)
+     * 4. Recalculate: On every buy/sell transaction (not daily automation)
      */
     function getCurrentPrice() public view returns (uint256) {
         uint256 ethBalance = address(this).balance;
@@ -42,15 +43,11 @@ contract Group13TokenSale is Ownable {
         
         // Calculate interest rate: ETH_balance / (2 * 10^9)
         // Since this results in very small numbers, we need to handle precision carefully
-        
+        // In case the day is 0, we return the base price directly to avoid division by zero error
         if (daysElapsed == 0) {
             return basePrice; // No time passed, return base price
         }
-        
-        // Interest calculation: basePrice * (ethBalance / 2*10^9) * daysElapsed
-        // To avoid precision loss with small numbers, we'll use scaled arithmetic
-        
-        // priceIncrease = basePrice * ethBalanceInEth * daysElapsed / (2 * 10^9)
+        // Calculate price increase based on the formula
         uint256 priceIncrease = (basePrice * ethBalanceInEth * daysElapsed) / (2 * 10**9);
         
         return basePrice + priceIncrease;
