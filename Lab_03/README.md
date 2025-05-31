@@ -13,9 +13,9 @@ We have successfully run and tested the contract Remix online IDE (Also tried to
 - Make the UI web interface to interact with the contract
 - Rewrite contracts to align with new [Lab 03 Requirements](/Requirement_Lab03.md) which:
 
-   - Allow others to buy token from te sale contract
+   - Allow others to buy token from the sale contract
    - Allow the owner to sell tokens back to the sale contract
-   - The token price will be calcualted as: `price = basePrice* (1 + interest rate) ^ (days since sale started)`
+   - The token price will be calculated as: `price = basePrice* (1 + interest rate) ^ (days since sale started)`
 
       This is same as the formula of compound interest, where:
       - `basePrice` is the initial price of the token, the requirement is to set it to 5 ETH
@@ -71,7 +71,7 @@ WARNING: These accounts, and their private keys, are publicly known.
 Any funds sent to them on Mainnet or any other live network WILL BE LOST.
 ```
 
-From the outout, we clearly see that the network is running on `http://localhost:8545` and we have several test accounts. I have limits to just create 5 test accounts, each is inited with 10,000 ETH each, for detail, see my [`hardhat.config.js`](./hardhat.config.js) file.
+From the output, we clearly see that the network is running on `http://localhost:8545` and we have several test accounts. I have limited to just create 5 test accounts, each is initialized with 10,000 ETH each, for detail, see my [`hardhat.config.js`](./hardhat.config.js) file.
 
 > [!NOTE]
 > Keep this terminal running, don't close it, as it is the local Hardhat network that will be used to deploy and test your contracts. You can open a new terminal for the next steps.
@@ -85,7 +85,7 @@ npx hardhat compile # Compile contracts first
 npm run deploy:local
 ```
 
-This will deploy your smart contracts (ERC-20 + Token Sale) to the hardhat local network. The `deploy:local` script runs the `scripts/deploy.js` file as defined in the `package.json` file. To view more about the deployment process, you can check the [`deploy.js`](./scripts/deploy.js) file. Anywahy, you should see output like this:
+This will deploy your smart contracts (ERC-20 + Token Sale) to the hardhat local network. The `deploy:local` script runs the `scripts/deploy.js` file as defined in the `package.json` file. To view more about the deployment process, you can check the [`deploy.js`](./scripts/deploy.js) file. Anyway, you should see output like this:
 
 ```
 chutrunganh@DESKTOP-RUUTEFU:~/Blockchain-and-Applications-IT4527E/Lab_03$ npm run deploy:local
@@ -158,7 +158,7 @@ Then REMEMBER to choose this network in MetaMask:
 2. **Import Test Account:**
    - Click on the account icon in MetaMask
    - Select "Import Account"
-   - Enter one of the private keys from Step 1 when you run the `npm run node` command. For exammple, in my case I will copy the first private key:
+   - Enter one of the private keys from Step 1 when you run the `npm run node` command. For example, in my case I will copy the first private key:
      ```
      0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
      ```
@@ -195,7 +195,7 @@ Then, it will require you to connect your MetaMask wallet (you should already in
 
 ![alt text](image-6.png)
 
-Click "Connect Wallet", pay attention the the current choosen Account in MetaMask, the web will connect to the account you have choosen in MetaMask. 
+Click "Connect Wallet", pay attention the the current chosen Account in MetaMask, the web will connect to the account you have chosen in MetaMask. 
 
 # 3. Interact with the Token Sale
 
@@ -205,8 +205,8 @@ In my case, I am at the first metamask account (the owner of the contracts), I c
 
 This is the owner account, so:
 
-- The owner balance with G13 token is `50000` (50% of total supply) as we have transfered this amount to the sale contract in the `deploy.js` script.
-- The owner balance with ETH is approximately `1 000 000 000` ETH as we config each created account have 1 million ETH in the `hardhat.config.js` file. (You will se 999 999 999,.. ssince we must spend a litle bit ETh when deploying the contracts).
+- The owner balance with G13 token is `50000` (50% of total supply) as we have transferred this amount to the sale contract in the `deploy.js` script.
+- The owner balance with ETH is approximately `1 000 000 000` ETH as we config each created account have 1 million ETH in the `hardhat.config.js` file. (You will see 999 999 999,.. ssince we must spend a little bit ETh when deploying the contracts).
 - The sale constract current balance (see in the green box) is `100` ETH, as we have added this amount to the sale contract in the `deploy.js` script.
 
 Now switch the account in MetaMask to the second account (the normal user account) and reconnect to the Metamask wallet (open the MetaMask extension, click on the account icon, then click "Connect"). You should see something like this:
@@ -242,7 +242,7 @@ Where:
 - `interest rate` = 5100.0002 ETH / (2 * 10^9) = 0.00000255 ETH, 5100.002 is the current ETH balance of the sale contract
 - `days since sale started` = 0.017164 (approximately 0.017 days since the sale started, which is about 24 hours)
 
-Also notice the chagne in the sale contract balance, it is now have `5100.0002` ETH, which is the amount of ETH the user has paid to buy the tokens and th token from 50 000 decrease to 49 000 G13 tokens (50 000 - 1000 = 49 000).
+Also notice the change in the sale contract balance, it is now have `5100.0002` ETH, which is the amount of ETH the user has paid to buy the tokens and th token from 50 000 decrease to 49 000 G13 tokens (50 000 - 1000 = 49 000).
 
 
 Buy one more 1000 G13 tokens, we see that they need to buy with a new price that previous transaction has updated the price, now it is `5.000000218845` ETH:
