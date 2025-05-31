@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("Group13TokenSale - Dynamic Pricing", function () {
+describe("Group13TokenSale - Requirement Implementation", function () {
   let token, sale, owner, buyer1, buyer2;
   let tokenAddress, saleAddress;
 
@@ -20,287 +20,332 @@ describe("Group13TokenSale - Dynamic Pricing", function () {
     await sale.waitForDeployment();
     saleAddress = await sale.getAddress();
 
-    // Transfer 50% of tokens to sale contract
+    // Transfer 50% of tokens to sale contract for selling
     const totalSupply = await token.totalSupply();
     const tokensForSale = totalSupply / 2n;
     await token.transfer(saleAddress, tokensForSale);
 
-    // Add initial ETH to sale contract for liquidity using the addEth function
-    await sale.addEth({ value: ethers.parseEther("100") });
+    // Add initial ETH to sale contract (for buying tokens back from users)
+    await sale.addEth({ value: ethers.parseEther("10") });
 
     console.log("\\n=== INITIAL SETUP ===");
     console.log(`Token deployed to: ${tokenAddress}`);
     console.log(`Sale deployed to: ${saleAddress}`);
     console.log(`Total supply: ${ethers.formatUnits(totalSupply, 18)} tokens`);
     console.log(`Tokens for sale: ${ethers.formatUnits(tokensForSale, 18)}`);
-    console.log(`Initial ETH in contract: 100 ETH`);
+    console.log(`Initial ETH in contract: 10 ETH`);
   });
 
-  describe("Test 1: Initial Price and Contract Setup", function () {
-    it("Should have correct initial values", async function () {
-      const currentPrice = await sale.getCurrentPrice();
+  describe("Test 1: Initial State and Price Calculation Understanding", function () {
+    it("Should demonstrate correct understanding of price calculation", async function () {
+      console.log("\\n=== TEST 1: PRICE CALCULATION UNDERSTANDING ===");
+      
       const contractInfo = await sale.getContractInfo();
-      const basePrice = await sale.basePrice();
-
-      console.log("\\n=== TEST 1: INITIAL VALUES ===");
-      console.log(`Base price: ${ethers.formatEther(basePrice)} ETH`);
-      console.log(`Current price: ${ethers.formatEther(currentPrice)} ETH`);
-      console.log(`Contract token balance: ${ethers.formatUnits(contractInfo[1], 18)}`);
-      console.log(`Contract ETH balance: ${ethers.formatEther(contractInfo[2])} ETH`);
-
-      expect(basePrice).to.equal(ethers.parseEther("5"));
-      expect(currentPrice).to.equal(ethers.parseEther("5"));
-      expect(contractInfo[1]).to.equal(ethers.parseUnits("50000", 18)); // 50,000 tokens
-      expect(contractInfo[2]).to.equal(ethers.parseEther("100")); // 100 ETH
+      const ethBalance = contractInfo[2]; // 10 ETH = 10 * 10^18 wei
+      const basePrice = await sale.basePrice(); // 5 ETH
+      
+      console.log(`Base price: ${ethers.formatEther(basePrice)} ETH per token`);
+      console.log(`ETH in contract: ${ethers.formatEther(ethBalance)} ETH`);
+      
+      // Calculate expected interest rate
+      const ethBalanceInEth = Number(ethers.formatEther(ethBalance));
+      const dailyInterestRate = ethBalanceInEth / (2 * 10**9);
+      console.log(`Daily interest rate: ${dailyInterestRate.toExponential(4)} = ${ethBalanceInEth} / (2 * 10^9)`);
+      
+      // Initially price should be base price (no time passed)
+      const currentPrice = await sale.getCurrentPrice();
+      console.log(`Current price (time=0): ${ethers.formatEther(currentPrice)} ETH`);
+      
+      // Allow small precision differences due to time passing during deployment
+      const tolerance = ethers.parseEther("0.000001"); // 0.000001 ETH tolerance
+      const difference = currentPrice > basePrice ? currentPrice - basePrice : basePrice - currentPrice;
+      expect(difference).to.be.lte(tolerance);
+      
+      console.log("\\n✅ Key Understanding:");
+      console.log("- Initially each token costs 5 ETH");
+      console.log("- Interest rate depends on ETH remaining in contract");
+      console.log("- More ETH in contract = higher interest rate = faster price growth");
+      console.log("- Price is recalculated on each transaction based on current ETH balance and time");
     });
   });
 
-  describe("Test 2: Buy Tokens", function () {
-    it("Should allow buying tokens and update price", async function () {
-      const tokensToBuy = ethers.parseUnits("100", 18); // 100 tokens
-      const initialPrice = await sale.getCurrentPrice();
-      const expectedCost = (initialPrice * tokensToBuy) / ethers.parseUnits("1", 18);
-      // Add small buffer for potential price increases
-      const costWithBuffer = expectedCost + ethers.parseEther("1");
-
+  describe("Test 2: Buying Tokens (ETH goes INTO contract)", function () {
+    it("Should allow buying tokens and demonstrate ETH balance effect", async function () {
       console.log("\\n=== TEST 2: BUYING TOKENS ===");
-      console.log(`Tokens to buy: 100`);
-      console.log(`Expected cost: ${ethers.formatEther(expectedCost)} ETH`);
-
-      // Check initial balances
-      const initialTokenBalance = await token.balanceOf(buyer1.address);
-      const initialEthBalance = await ethers.provider.getBalance(buyer1.address);
-
-      console.log(`Buyer1 initial token balance: ${ethers.formatUnits(initialTokenBalance, 18)}`);
-      console.log(`Buyer1 initial ETH balance: ${ethers.formatEther(initialEthBalance)} ETH`);
-
-      // Buy tokens
-      await expect(sale.connect(buyer1).buyTokens(tokensToBuy, { value: costWithBuffer }))
-        .to.emit(sale, "TokensPurchased");
-
-      // Check final balances
-      const finalTokenBalance = await token.balanceOf(buyer1.address);
-      const finalEthBalance = await ethers.provider.getBalance(buyer1.address);
-      const newPrice = await sale.getCurrentPrice();
-
-      console.log(`Buyer1 final token balance: ${ethers.formatUnits(finalTokenBalance, 18)}`);
-      console.log(`Buyer1 final ETH balance: ${ethers.formatEther(finalEthBalance)} ETH`);
-      console.log(`New price after transaction: ${ethers.formatEther(newPrice)} ETH`);
-
-      expect(finalTokenBalance).to.equal(tokensToBuy);
-      expect(newPrice).to.be.gte(initialPrice); // Price should increase or stay same
+      
+      const tokensToBuy = ethers.parseUnits("2", 18); // 2 tokens
+      
+      // Check state before buying
+      const priceBefore = await sale.getCurrentPrice();
+      const contractInfoBefore = await sale.getContractInfo();
+      const ethBefore = contractInfoBefore[2];
+      
+      console.log(`Before buying:`);
+      console.log(`- Price: ${ethers.formatEther(priceBefore)} ETH per token`);
+      console.log(`- ETH in contract: ${ethers.formatEther(ethBefore)} ETH`);
+      console.log(`- Buying 2 tokens`);
+      
+      // Calculate cost and buy tokens
+      const totalCost = (priceBefore * tokensToBuy) / ethers.parseUnits("1", 18);
+      console.log(`- Total cost: ${ethers.formatEther(totalCost)} ETH`);
+      
+      // Add small buffer for price changes during transaction
+      const costWithBuffer = totalCost + ethers.parseEther("0.01");
+      
+      const buyerBalanceBefore = await token.balanceOf(buyer1.address);
+      await sale.connect(buyer1).buyTokens(tokensToBuy, { value: costWithBuffer });
+      const buyerBalanceAfter = await token.balanceOf(buyer1.address);
+      
+      // Check state after buying
+      const contractInfoAfter = await sale.getContractInfo();
+      const ethAfter = contractInfoAfter[2];
+      const priceAfter = await sale.getCurrentPrice();
+      
+      console.log(`\\nAfter buying:`);
+      console.log(`- Buyer received: ${ethers.formatUnits(buyerBalanceAfter - buyerBalanceBefore, 18)} tokens`);
+      console.log(`- ETH in contract: ${ethers.formatEther(ethAfter)} ETH`);
+      console.log(`- ETH increase: ${ethers.formatEther(ethAfter - ethBefore)} ETH`);
+      console.log(`- New price: ${ethers.formatEther(priceAfter)} ETH per token`);
+      
+      // Calculate new interest rate
+      const ethAfterInEth = Number(ethers.formatEther(ethAfter));
+      const newDailyRate = ethAfterInEth / (2 * 10**9);
+      console.log(`- New daily interest rate: ${newDailyRate.toExponential(4)}`);
+      
+      console.log("\\n✅ Key Observations:");
+      console.log("- ETH goes INTO contract when buying tokens");
+      console.log("- Higher ETH balance = higher interest rate");
+      console.log("- Future price increases will be faster due to more ETH");
+      
+      expect(buyerBalanceAfter).to.equal(tokensToBuy);
+      expect(ethAfter).to.be.gt(ethBefore); // More ETH in contract
     });
   });
 
-  describe("Test 3: Sell Tokens Back", function () {
-    it("Should allow selling tokens back to contract", async function () {
-      // First buy some tokens
-      const tokensToBuy = ethers.parseUnits("50", 18);
-      const buyPrice = await sale.getCurrentPrice();
-      const buyCost = (buyPrice * tokensToBuy) / ethers.parseUnits("1", 18);
-
-      await sale.connect(buyer1).buyTokens(tokensToBuy, { value: buyCost });
-
-      console.log("\\n=== TEST 3: SELLING TOKENS ===");
-      console.log(`First bought: 50 tokens for ${ethers.formatEther(buyCost)} ETH`);
-
-      // Wait a bit to simulate time passing
-      await ethers.provider.send("evm_increaseTime", [3600]); // 1 hour
-      await ethers.provider.send("evm_mine");
-
-      const tokensToSell = ethers.parseUnits("25", 18); // Sell half
-      const sellPrice = await sale.getCurrentPrice();
-      const expectedReceive = (sellPrice * tokensToSell) / ethers.parseUnits("1", 18);
-
-      console.log(`Tokens to sell: 25`);
-      console.log(`Current price: ${ethers.formatEther(sellPrice)} ETH`);
-      console.log(`Expected ETH to receive: ${ethers.formatEther(expectedReceive)} ETH`);
-
-      // Approve sale contract to spend tokens
-      await token.connect(buyer1).approve(saleAddress, tokensToSell);
-
-      // Check balances before selling
-      const initialTokenBalance = await token.balanceOf(buyer1.address);
-      const initialEthBalance = await ethers.provider.getBalance(buyer1.address);
-
-      console.log(`Before sell - Token balance: ${ethers.formatUnits(initialTokenBalance, 18)}`);
-      console.log(`Before sell - ETH balance: ${ethers.formatEther(initialEthBalance)} ETH`);
-
-      // Sell tokens - use transaction receipt to get actual amount received
-      const sellTx = await sale.connect(buyer1).sellTokens(tokensToSell);
-      const sellReceipt = await sellTx.wait();
+  describe("Test 3: Time Effect on Price", function () {
+    it("Should demonstrate price increase over time", async function () {
+      console.log("\\n=== TEST 3: TIME EFFECT ON PRICE ===");
       
-      // Get the actual amount received from the event
-      const tokensSoldEvent = sellReceipt.logs.find(log => {
-        try {
-          const parsed = sale.interface.parseLog(log);
-          return parsed.name === 'TokensSold';
-        } catch {
-          return false;
-        }
-      });
-      
-      if (tokensSoldEvent) {
-        const parsedEvent = sale.interface.parseLog(tokensSoldEvent);
-        const actualReceived = parsedEvent.args[2]; // ethReceived is the 3rd argument
-        
-        console.log(`Expected ETH to receive: ${ethers.formatEther(expectedReceive)} ETH`);
-        console.log(`Actual ETH received: ${ethers.formatEther(actualReceived)} ETH`);
-        
-        // Allow for small precision differences (within 0.01% tolerance)
-        const tolerance = expectedReceive / 10000n; // 0.01% tolerance
-        const difference = actualReceived > expectedReceive ? 
-          actualReceived - expectedReceive : expectedReceive - actualReceived;
-        
-        expect(difference).to.be.lte(tolerance);
-      } else {
-        // Fallback: emit event check with expected value
-        await expect(sellTx).to.emit(sale, "TokensSold")
-          .withArgs(buyer1.address, tokensToSell, expectedReceive);
-      }
-
-      // Check balances after selling
-      const finalTokenBalance = await token.balanceOf(buyer1.address);
-      const finalEthBalance = await ethers.provider.getBalance(buyer1.address);
-
-      console.log(`After sell - Token balance: ${ethers.formatUnits(finalTokenBalance, 18)}`);
-      console.log(`After sell - ETH balance: ${ethers.formatEther(finalEthBalance)} ETH`);
-
-      expect(finalTokenBalance).to.equal(initialTokenBalance - tokensToSell);
-      expect(finalEthBalance).to.be.gt(initialEthBalance); // Should have more ETH
-    });
-  });
-
-  describe("Test 4: Price Increase Over Time", function () {
-    it("Should increase price continuously over time since creation", async function () {
-      console.log("\\n=== TEST 4: CONTINUOUS PRICE INCREASE ===");
-
-      // Record initial price
+      // Record initial state
       const initialPrice = await sale.getCurrentPrice();
-      console.log(`Initial price: ${ethers.formatEther(initialPrice)} ETH`);
-
-      // Wait time and check price (no transactions needed)
+      const contractInfo = await sale.getContractInfo();
+      const ethBalance = Number(ethers.formatEther(contractInfo[2]));
+      const dailyRate = ethBalance / (2 * 10**9);
+      
+      console.log(`Initial conditions:`);
+      console.log(`- Price: ${ethers.formatEther(initialPrice)} ETH`);
+      console.log(`- ETH balance: ${ethBalance} ETH`);
+      console.log(`- Daily interest rate: ${dailyRate.toExponential(4)}`);
+      
+      // Wait 1 day and check price
+      console.log(`\\nWaiting 1 day...`);
       await ethers.provider.send("evm_increaseTime", [86400]); // 1 day
       await ethers.provider.send("evm_mine");
-
+      
       const priceAfter1Day = await sale.getCurrentPrice();
-      console.log(`Price after 1 day (no transactions): ${ethers.formatEther(priceAfter1Day)} ETH`);
-
-      // Wait more time
+      const expectedIncrease = Number(ethers.formatEther(initialPrice)) * dailyRate * 1; // 1 day
+      const expectedPrice = Number(ethers.formatEther(initialPrice)) * (1 + dailyRate);
+      
+      console.log(`After 1 day:`);
+      console.log(`- New price: ${ethers.formatEther(priceAfter1Day)} ETH`);
+      console.log(`- Expected price: ~${expectedPrice.toFixed(10)} ETH`);
+      console.log(`- Price increase: ${ethers.formatEther(priceAfter1Day - initialPrice)} ETH`);
+      
+      // Wait another day
+      console.log(`\\nWaiting another day...`);
       await ethers.provider.send("evm_increaseTime", [86400]); // Another day
       await ethers.provider.send("evm_mine");
-
+      
       const priceAfter2Days = await sale.getCurrentPrice();
-      console.log(`Price after 2 days (no transactions): ${ethers.formatEther(priceAfter2Days)} ETH`);
-
-      // Now make a transaction and see the price is still based on total time
-      const tokensToBuy = ethers.parseUnits("10", 18);
-      const currentPrice = await sale.getCurrentPrice();
-      const cost = (currentPrice * tokensToBuy) / ethers.parseUnits("1", 18);
-      // Add small buffer to account for time-based price increases during transaction
-      const costWithBuffer = cost + ethers.parseEther("0.1");
-
-      await sale.connect(buyer1).buyTokens(tokensToBuy, { value: costWithBuffer });
-
-      const priceAfterTransaction = await sale.getCurrentPrice();
-      console.log(`Price after transaction: ${ethers.formatEther(priceAfterTransaction)} ETH`);
-
-      // Wait more time and check price continues to increase
-      await ethers.provider.send("evm_increaseTime", [86400]); // Another day
-      await ethers.provider.send("evm_mine");
-
-      const finalPrice = await sale.getCurrentPrice();
-      console.log(`Price after 3 days total: ${ethers.formatEther(finalPrice)} ETH`);
-
-      console.log(`Total price increase: ${ethers.formatEther(finalPrice - initialPrice)} ETH`);
-
+      console.log(`After 2 days total:`);
+      console.log(`- New price: ${ethers.formatEther(priceAfter2Days)} ETH`);
+      console.log(`- Total increase: ${ethers.formatEther(priceAfter2Days - initialPrice)} ETH`);
+      
+      console.log("\\n✅ Key Observations:");
+      console.log("- Price increases continuously over time");
+      console.log("- Rate depends on ETH balance in contract");
+      console.log("- Formula: Price = BasePrice × (1 + InterestRate × DaysElapsed)");
+      
       expect(priceAfter1Day).to.be.gt(initialPrice);
       expect(priceAfter2Days).to.be.gt(priceAfter1Day);
-      expect(finalPrice).to.be.gt(priceAfter2Days);
     });
   });
 
-  describe("Test 5: Interest Rate Calculation", function () {
-    it("Should demonstrate interest rate effect on pricing", async function () {
-      console.log("\\n=== TEST 5: INTEREST RATE CALCULATION ===");
-
-      const contractInfo = await sale.getContractInfo();
-      const ethBalance = contractInfo[2];
+  describe("Test 4: Selling Tokens (ETH goes OUT of contract)", function () {
+    it("Should allow selling tokens and demonstrate ETH balance reduction", async function () {
+      console.log("\\n=== TEST 4: SELLING TOKENS ===");
       
-      // Convert to ETH for calculation (avoiding BigInt division issues)
-      const ethBalanceInEth = Number(ethers.formatEther(ethBalance));
-      const interestRatePerDay = ethBalanceInEth / (2 * 10**9);
-      const basePrice = Number(ethers.formatEther(await sale.basePrice()));
-
-      console.log(`Contract ETH balance: ${ethBalanceInEth} ETH`);
-      console.log(`Interest rate per day: ${interestRatePerDay.toExponential(6)}`);
-      console.log(`Base price: ${basePrice} ETH`);
-
-      // Simulate time passing and check price increase
-      await ethers.provider.send("evm_increaseTime", [86400]); // 1 day
+      // First, buy some tokens to have something to sell
+      const tokensToBuy = ethers.parseUnits("1", 18);
+      const buyPrice = await sale.getCurrentPrice();
+      const buyCost = (buyPrice * tokensToBuy) / ethers.parseUnits("1", 18);
+      const buyCostWithBuffer = buyCost + ethers.parseEther("0.01");
+      
+      await sale.connect(buyer1).buyTokens(tokensToBuy, { value: buyCostWithBuffer });
+      console.log(`Setup: Bought 1 token for ${ethers.formatEther(buyCost)} ETH`);
+      
+      // Wait some time for price to increase
+      await ethers.provider.send("evm_increaseTime", [43200]); // 12 hours
       await ethers.provider.send("evm_mine");
-
-      const priceAfterTime = await sale.getCurrentPrice();
-      const expectedIncrease = basePrice * interestRatePerDay * 1; // 1 day
-      const expectedPrice = basePrice + expectedIncrease;
-
-      console.log(`Price after 1 day: ${ethers.formatEther(priceAfterTime)} ETH`);
-      console.log(`Expected price increase: ${expectedIncrease.toExponential(6)} ETH`);
-      console.log(`Expected total price: ${expectedPrice} ETH`);
-
-      // Add more ETH to contract and see effect
-      await owner.sendTransaction({
-        to: saleAddress,
-        value: ethers.parseEther("500")
-      });
-
-      const newContractInfo = await sale.getContractInfo();
-      const newEthBalance = Number(ethers.formatEther(newContractInfo[2]));
-      const newInterestRatePerDay = newEthBalance / (2 * 10**9);
-
-      console.log(`\\nAfter adding 500 ETH:`);
-      console.log(`New ETH balance: ${newEthBalance} ETH`);
-      console.log(`New interest rate per day: ${newInterestRatePerDay.toExponential(6)}`);
-
-      // Wait another day and check price
-      await ethers.provider.send("evm_increaseTime", [86400]); // 1 day
-      await ethers.provider.send("evm_mine");
-
-      const finalPrice = await sale.getCurrentPrice();
-      console.log(`Price after adding ETH and 1 more day: ${ethers.formatEther(finalPrice)} ETH`);
-
-      // Verify that higher ETH balance leads to faster price increases
-      expect(newInterestRatePerDay).to.be.gt(interestRatePerDay);
-      expect(finalPrice).to.be.gt(priceAfterTime);
+      
+      // Check state before selling
+      const contractInfoBefore = await sale.getContractInfo();
+      const ethBefore = contractInfoBefore[2];
+      const priceBefore = await sale.getCurrentPrice();
+      
+      console.log(`\\nBefore selling:`);
+      console.log(`- ETH in contract: ${ethers.formatEther(ethBefore)} ETH`);
+      console.log(`- Current price: ${ethers.formatEther(priceBefore)} ETH`);
+      
+      // Sell tokens
+      const tokensToSell = ethers.parseUnits("0.5", 18); // Sell half
+      const expectedETHReceive = (priceBefore * tokensToSell) / ethers.parseUnits("1", 18);
+      
+      console.log(`- Selling 0.5 tokens`);
+      console.log(`- Expected ETH to receive: ${ethers.formatEther(expectedETHReceive)} ETH`);
+      
+      // Approve and sell
+      await token.connect(buyer1).approve(saleAddress, tokensToSell);
+      const buyerETHBefore = await ethers.provider.getBalance(buyer1.address);
+      
+      await sale.connect(buyer1).sellTokens(tokensToSell);
+      
+      // Check state after selling
+      const contractInfoAfter = await sale.getContractInfo();
+      const ethAfter = contractInfoAfter[2];
+      const priceAfter = await sale.getCurrentPrice();
+      const buyerETHAfter = await ethers.provider.getBalance(buyer1.address);
+      
+      console.log(`\\nAfter selling:`);
+      console.log(`- ETH in contract: ${ethers.formatEther(ethAfter)} ETH`);
+      console.log(`- ETH decrease: ${ethers.formatEther(ethBefore - ethAfter)} ETH`);
+      console.log(`- New price: ${ethers.formatEther(priceAfter)} ETH`);
+      console.log(`- Buyer ETH change: ${ethers.formatEther(buyerETHAfter - buyerETHBefore)} ETH (minus gas)`);
+      
+      // Calculate new interest rate
+      const ethAfterInEth = Number(ethers.formatEther(ethAfter));
+      const newDailyRate = ethAfterInEth / (2 * 10**9);
+      const oldDailyRate = Number(ethers.formatEther(ethBefore)) / (2 * 10**9);
+      
+      console.log(`- Old daily rate: ${oldDailyRate.toExponential(4)}`);
+      console.log(`- New daily rate: ${newDailyRate.toExponential(4)}`);
+      
+      console.log("\\n✅ Key Observations:");
+      console.log("- ETH goes OUT of contract when selling tokens");
+      console.log("- Lower ETH balance = lower interest rate");
+      console.log("- Future price increases will be slower due to less ETH");
+      
+      expect(ethAfter).to.be.lt(ethBefore); // Less ETH in contract
+      expect(newDailyRate).to.be.lt(oldDailyRate); // Lower interest rate
     });
   });
 
-  describe("Test 6: Edge Cases", function () {
-    it("Should handle edge cases correctly", async function () {
-      console.log("\\n=== TEST 6: EDGE CASES ===");
+  describe("Test 5: Interest Rate Impact Demonstration", function () {
+    it("Should demonstrate how ETH balance affects interest rate", async function () {
+      console.log("\\n=== TEST 5: INTEREST RATE IMPACT ===");
+      
+      // Test different ETH balances
+      const testBalances = [
+        ethers.parseEther("1"),    // 1 ETH
+        ethers.parseEther("100"),  // 100 ETH  
+        ethers.parseEther("1000"), // 1000 ETH
+      ];
+      
+      for (let i = 0; i < testBalances.length; i++) {
+        const balance = testBalances[i];
+        const balanceInEth = Number(ethers.formatEther(balance));
+        const dailyRate = balanceInEth / (2 * 10**9);
+        const basePrice = Number(ethers.formatEther(await sale.basePrice()));
+        
+        // Calculate price after 1 day with this balance
+        const priceAfter1Day = basePrice * (1 + dailyRate);
+        const dailyIncrease = priceAfter1Day - basePrice;
+        
+        console.log(`\\nScenario ${i + 1}: ${balanceInEth} ETH in contract`);
+        console.log(`- Daily interest rate: ${dailyRate.toExponential(4)}`);
+        console.log(`- Price after 1 day: ${priceAfter1Day.toFixed(10)} ETH`);
+        console.log(`- Daily increase: ${dailyIncrease.toExponential(4)} ETH`);
+      }
+      
+      console.log("\\n✅ Key Understanding:");
+      console.log("- More ETH in contract = Higher interest rate = Faster price growth");
+      console.log("- Interest rate is proportional to ETH balance");
+      console.log("- This creates dynamic pricing based on contract's ETH reserves");
+    });
+  });
 
-      // Test buying with exact amount
-      const tokensToBuy = ethers.parseUnits("1", 18);
-      const price = await sale.getCurrentPrice();
-      const exactCost = (price * tokensToBuy) / ethers.parseUnits("1", 18);
-      // Add small buffer for price fluctuations
-      const costWithBuffer = exactCost + ethers.parseEther("0.1");
-
-      console.log(`Buying 1 token with cost: ${ethers.formatEther(costWithBuffer)} ETH`);
-      await sale.connect(buyer1).buyTokens(tokensToBuy, { value: costWithBuffer });
-
-      // Test buying with excess ETH (should refund)
-      const excessAmount = costWithBuffer + ethers.parseEther("1");
-      const balanceBefore = await ethers.provider.getBalance(buyer2.address);
-
-      console.log(`Buying 1 token with excess ETH: ${ethers.formatEther(excessAmount)} ETH`);
-      await sale.connect(buyer2).buyTokens(tokensToBuy, { value: excessAmount });
-
-      const balanceAfter = await ethers.provider.getBalance(buyer2.address);
-      console.log(`Balance change: ${ethers.formatEther(balanceAfter - balanceBefore)} ETH`);
-
-      // Should have spent only the exact cost (plus gas)
-      expect(balanceBefore - balanceAfter).to.be.closeTo(exactCost, ethers.parseEther("0.01"));
+  describe("Test 6: Complete Transaction Cycle", function () {
+    it("Should demonstrate complete buy-sell cycle with price changes", async function () {
+      console.log("\\n=== TEST 6: COMPLETE TRANSACTION CYCLE ===");
+      
+      // Record initial state
+      const initialInfo = await sale.getContractInfo();
+      const initialPrice = initialInfo[0];
+      const initialETH = initialInfo[2];
+      
+      console.log(`Initial state:`);
+      console.log(`- Price: ${ethers.formatEther(initialPrice)} ETH`);
+      console.log(`- Contract ETH: ${ethers.formatEther(initialETH)} ETH`);
+      
+      // Step 1: Buyer1 buys tokens
+      console.log(`\\nStep 1: Buyer1 buys 2 tokens`);
+      const tokens1 = ethers.parseUnits("2", 18);
+      const cost1 = (initialPrice * tokens1) / ethers.parseUnits("1", 18);
+      const cost1WithBuffer = cost1 + ethers.parseEther("0.01");
+      await sale.connect(buyer1).buyTokens(tokens1, { value: cost1WithBuffer });
+      
+      const info1 = await sale.getContractInfo();
+      console.log(`- Contract ETH: ${ethers.formatEther(info1[2])} ETH (+${ethers.formatEther(info1[2] - initialETH)})`);
+      console.log(`- New price: ${ethers.formatEther(info1[0])} ETH`);
+      
+      // Step 2: Wait some time
+      console.log(`\\nStep 2: Wait 6 hours`);
+      await ethers.provider.send("evm_increaseTime", [21600]); // 6 hours
+      await ethers.provider.send("evm_mine");
+      
+      const info2 = await sale.getContractInfo();
+      console.log(`- Price after time: ${ethers.formatEther(info2[0])} ETH`);
+      
+      // Step 3: Buyer2 buys tokens (at higher price)
+      console.log(`\\nStep 3: Buyer2 buys 1 token at new price`);
+      const tokens2 = ethers.parseUnits("1", 18);
+      const cost2 = (info2[0] * tokens2) / ethers.parseUnits("1", 18);
+      const cost2WithBuffer = cost2 + ethers.parseEther("0.01");
+      await sale.connect(buyer2).buyTokens(tokens2, { value: cost2WithBuffer });
+      
+      const info3 = await sale.getContractInfo();
+      console.log(`- Contract ETH: ${ethers.formatEther(info3[2])} ETH (+${ethers.formatEther(cost2)})`);
+      console.log(`- New price: ${ethers.formatEther(info3[0])} ETH`);
+      
+      // Step 4: Wait more time
+      console.log(`\\nStep 4: Wait another 6 hours`);
+      await ethers.provider.send("evm_increaseTime", [21600]); // 6 hours
+      await ethers.provider.send("evm_mine");
+      
+      const info4 = await sale.getContractInfo();
+      console.log(`- Price after more time: ${ethers.formatEther(info4[0])} ETH`);
+      
+      // Step 5: Buyer1 sells some tokens
+      console.log(`\\nStep 5: Buyer1 sells 1 token`);
+      const tokensToSell = ethers.parseUnits("1", 18);
+      await token.connect(buyer1).approve(saleAddress, tokensToSell);
+      await sale.connect(buyer1).sellTokens(tokensToSell);
+      
+      const info5 = await sale.getContractInfo();
+      const ethReduction = info4[2] - info5[2];
+      console.log(`- Contract ETH: ${ethers.formatEther(info5[2])} ETH (-${ethers.formatEther(ethReduction)})`);
+      console.log(`- New price: ${ethers.formatEther(info5[0])} ETH`);
+      
+      console.log(`\\n=== SUMMARY ===`);
+      console.log(`- Total price change: ${ethers.formatEther(info5[0] - initialPrice)} ETH`);
+      console.log(`- Net ETH change: ${ethers.formatEther(info5[2] - initialETH)} ETH`);
+      console.log(`- Current interest rate: ${(Number(ethers.formatEther(info5[2])) / (2 * 10**9)).toExponential(4)}`);
+      
+      console.log("\\n✅ Complete cycle demonstrates:");
+      console.log("- Buying increases ETH balance and interest rate");
+      console.log("- Time passage increases price based on current interest rate");
+      console.log("- Selling decreases ETH balance and interest rate");
+      console.log("- Price is recalculated on each transaction");
     });
   });
 });

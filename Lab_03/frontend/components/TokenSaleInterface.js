@@ -321,31 +321,7 @@ export default function TokenSaleInterface({ provider, signer, account }) {
     setTransactionHistory(prev => [newTransaction, ...prev.slice(0, 9)]) // Keep last 10
   }
 
-  const getPriceBreakdown = () => {
-    if (!contractInfo.contractEthBalance || !contractInfo.timeSinceCreation) {
-      return null
-    }
-    
-    try {
-      const basePrice = 5 // 5 ETH
-      const ethBalance = parseFloat(contractInfo.contractEthBalance)
-      const daysElapsed = contractInfo.timeSinceCreation / (24 * 60 * 60) // Convert seconds to days
-      const interestRate = ethBalance / (2 * Math.pow(10, 9))
-      const priceIncrease = basePrice * interestRate * daysElapsed
-      
-      return {
-        basePrice: basePrice.toFixed(6),
-        ethBalance: ethBalance.toFixed(4),
-        daysElapsed: daysElapsed.toFixed(6),
-        interestRate,
-        priceIncrease: priceIncrease.toFixed(6),
-        totalPrice: (basePrice + priceIncrease).toFixed(6)
-      }
-    } catch (error) {
-      console.error('Error calculating price breakdown:', error)
-      return null
-    }
-  }
+
 
   const calculateEstimatedCost = () => {
     if (!buyAmount || !currentPriceRaw) return '0'
@@ -503,10 +479,7 @@ export default function TokenSaleInterface({ provider, signer, account }) {
               {buyAmount && (
                 <div className="bg-white p-3 rounded-md border-l-4 border-blue-500">
                   <p className="text-sm text-gray-600">
-                    Estimated Cost: <span className="font-bold text-blue-600 font-mono text-lg">{parseFloat(calculateEstimatedCost()).toFixed(10)} ETH</span>
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {buyAmount} tokens × {formatPriceWithPrecision(contractInfo.currentPrice, 12)} ETH/token
+                    Estimated Cost: <span className="font-bold text-blue-600 font-mono text-lg">{parseFloat(calculateEstimatedCost()).toFixed(6)} ETH</span>
                   </p>
                 </div>
               )}
@@ -541,9 +514,9 @@ export default function TokenSaleInterface({ provider, signer, account }) {
               </div>
               
               {sellAmount && (
-                <div className="bg-white p-3 rounded-md">
+                <div className="bg-white p-3 rounded-md border-l-4 border-red-500">
                   <p className="text-sm text-gray-600">
-                    You'll Receive: <span className="font-bold text-red-600">{calculateEstimatedReceive()} ETH</span>
+                    You'll Receive: <span className="font-bold text-red-600">{parseFloat(calculateEstimatedReceive()).toFixed(6)} ETH</span>
                   </p>
                 </div>
               )}
@@ -578,67 +551,9 @@ export default function TokenSaleInterface({ provider, signer, account }) {
           Refresh Data
         </button>
 
-        {/* Price Information */}
-        <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-          <div className="flex justify-between items-center mb-2">
-            <h4 className="font-semibold text-yellow-800">Dynamic Pricing Information</h4>
-            <button
-              onClick={() => setShowPriceDetails(!showPriceDetails)}
-              className="text-sm text-yellow-600 hover:text-yellow-800"
-            >
-              {showPriceDetails ? 'Hide Details' : 'Show Details'}
-            </button>
-          </div>
-          
-          {showPriceDetails && (() => {
-            const breakdown = getPriceBreakdown();
-            return breakdown && (
-              <div className="bg-white p-3 rounded-md mb-3 text-sm">
-                <h5 className="font-medium mb-2">Price Calculation Breakdown:</h5>
-                <div className="space-y-1 text-xs">
-                  <p>• Base Price: {breakdown.basePrice} ETH</p>
-                  <p>• Contract ETH Balance: {breakdown.ethBalance} ETH</p>
-                  <p>• Days Elapsed: {breakdown.daysElapsed} days</p>
-                  <p>• Interest Rate: {(breakdown.interestRate * 100).toExponential(2)}% per day</p>
-                  <p>• Price Increase: {breakdown.priceIncrease} ETH</p>
-                  <p className="font-bold">• Total Current Price: {breakdown.totalPrice} ETH</p>
-                </div>
-              </div>
-            );
-          })()}
-          
-          <p className="text-sm text-yellow-700">
-            • Token price starts at 5 ETH and increases over time<br/>
-            • Interest Rate = Contract ETH Balance ÷ (2 × 10⁹)<br/>
-            • Price increases continuously since contract creation<br/>
-            • More ETH in contract = faster price increases
-          </p>
-        </div>
 
-        {/* Transaction History */}
-        {transactionHistory.length > 0 && (
-          <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-md">
-            <h4 className="font-semibold text-gray-800 mb-3">Recent Transactions</h4>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {transactionHistory.map((tx) => (
-                <div key={tx.id} className="bg-white p-2 rounded border text-sm">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <span className={`font-bold ${tx.type === 'BUY' ? 'text-blue-600' : 'text-red-600'}`}>
-                        {tx.type}
-                      </span>
-                      <span className="ml-2">{tx.amount} tokens @ {parseFloat(tx.price).toFixed(6)} ETH</span>
-                    </div>
-                    <span className="text-gray-500 text-xs">{tx.timestamp}</span>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1 truncate">
-                    TX: {tx.txHash}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+
+
 
         {/* Transaction History */}
         {transactionHistory.length > 0 && (
@@ -671,43 +586,7 @@ export default function TokenSaleInterface({ provider, signer, account }) {
           </div>
         )}
 
-        {/* Price Calculation Details */}
-        {showPriceDetails && (() => {
-          const breakdown = getPriceBreakdown();
-          return breakdown && (
-            <div className="mt-6 p-4 bg-white border border-gray-200 rounded-md shadow-sm">
-              <h4 className="font-semibold text-gray-800 mb-3">Price Calculation Details</h4>
-              <div className="space-y-2">
-                <p className="text-sm text-gray-600">
-                  • Base Price: <span className="font-medium">{breakdown.basePrice} ETH</span>
-                </p>
-                <p className="text-sm text-gray-600">
-                  • ETH Balance in Contract: <span className="font-medium">{breakdown.ethBalance} ETH</span>
-                </p>
-                <p className="text-sm text-gray-600">
-                  • Days Elapsed Since Creation: <span className="font-medium">{breakdown.daysElapsed} days</span>
-                </p>
-                <p className="text-sm text-gray-600">
-                  • Interest Rate: <span className="font-medium">{(breakdown.interestRate * 100).toFixed(6)}%</span>
-                </p>
-                <p className="text-sm text-gray-600">
-                  • Price Increase: <span className="font-medium">{breakdown.priceIncrease} ETH</span>
-                </p>
-                <p className="text-sm text-gray-600">
-                  • Total Price: <span className="font-medium">{breakdown.totalPrice} ETH</span>
-                </p>
-              </div>
-            </div>
-          );
-        })()}
 
-        {/* Toggle Price Details Button */}
-        <button
-          onClick={() => setShowPriceDetails(!showPriceDetails)}
-          className="mt-4 px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
-        >
-          {showPriceDetails ? 'Hide Price Details' : 'Show Price Details'}
-        </button>
       </div>
     </div>
   )
