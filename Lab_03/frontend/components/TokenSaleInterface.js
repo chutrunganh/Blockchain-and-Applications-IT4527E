@@ -217,15 +217,20 @@ export default function TokenSaleInterface({ provider, signer, account }) {
       const tokenAmount = ethers.parseUnits(buyAmount, 18)
       const price = await saleContract.getCurrentPrice()
       const totalCost = (price * tokenAmount) / ethers.parseUnits('1', 18)
+      
+      // Add a small buffer (0.1%) to handle precision differences
+      const buffer = totalCost / 1000n // 0.1% buffer
+      const totalCostWithBuffer = totalCost + buffer
 
       console.log('Buy transaction details:')
       console.log('- Token amount:', ethers.formatUnits(tokenAmount, 18), 'tokens')
       console.log('- Current price:', ethers.formatEther(price), 'ETH per token')
       console.log('- Total cost:', ethers.formatEther(totalCost), 'ETH')
+      console.log('- Total cost with buffer:', ethers.formatEther(totalCostWithBuffer), 'ETH')
 
       const saleWithSigner = saleContract.connect(signer)
       const tx = await saleWithSigner.buyTokens(tokenAmount, {
-        value: totalCost,
+        value: totalCostWithBuffer,
         gasLimit: 300000
       })
 

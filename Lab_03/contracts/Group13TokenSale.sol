@@ -27,48 +27,39 @@ contract Group13TokenSale is Ownable {
      * @dev Calculate current token price based on ETH balance and time since creation
      * Formula from Lab requirements:
      * 1. Base price: 5 ETH per token
-     * 2. Interest rate: ETH_balance / (2 * 10^9) per day (compound daily)
-     * 3. Price calculation: Price = BasePrice * (1 + InterestRate)^DaysElapsed
-     * 4. Recalculate: On every buy/sell transaction (not daily automation)
-     * 
-     * Using approximation for compound interest with high precision:
-     * For small rates: (1 + r)^t ≈ 1 + r*t + (r*t)^2/2 + (r*t)^3/6 + ...
+     * 2. Interest rate per day: ETH_balance_in_ETH / (2 * 10^9)
+     * 3. Price = BasePrice * (1 + InterestRate * DaysElapsed)
+     * 4. Recalculate on every buy/sell transaction based on current ETH balance and time
      */
     function getCurrentPrice() public view returns (uint256) {
         uint256 ethBalance = address(this).balance;
         uint256 timePassed = block.timestamp - contractCreationTime;
         
-        // If less than 1 hour passed, return base price to avoid tiny rounding effects
-        if (timePassed < 3600) {
+        // If less than 5 minutes passed, return base price to avoid precision issues
+        if (timePassed < 300) {
             return basePrice;
         }
         
-        // Convert time to fractional days (using higher precision)
-        // timePassed is in seconds, 1 day = 86400 seconds
-        uint256 timeInDays = timePassed * 1e18 / (1 days); // Fractional days with 18 decimals
+        // Convert time to days (as decimal with 18 decimal precision)
+        uint256 daysElapsed = (timePassed * 1e18) / 1 days;
         
-        // Convert ETH balance from wei to ETH (with precision)
+        // Convert ETH balance from wei to ETH units
         uint256 ethBalanceInEth = ethBalance / 1 ether;
         
         // Calculate daily interest rate: ETH_balance / (2 * 10^9)
-        // Scale up for precision: rate = ethBalance * 1e18 / (2 * 10^9 * 1e18)
-        uint256 dailyRate = (ethBalanceInEth * 1e18) / (2 * 10**9);
-        
-        // For compound interest approximation: Price ≈ BasePrice * (1 + rate * time + (rate * time)^2 / 2)
-        // This gives good approximation for reasonable rates and time periods
-        uint256 rateTimeProduct = (dailyRate * timeInDays) / 1e18; // rate * time
-        
-        // Calculate: 1 + rate*time + (rate*time)^2/2
-        uint256 compound = 1e18 + rateTimeProduct;
-        
-        // Add quadratic term for better accuracy: (rate*time)^2/2
-        if (rateTimeProduct > 0) {
-            uint256 quadraticTerm = (rateTimeProduct * rateTimeProduct) / (2 * 1e18);
-            compound += quadraticTerm;
+        // Handle the case where ethBalanceInEth is 0 to avoid division by zero effects
+        if (ethBalanceInEth == 0) {
+            return basePrice; // No interest if no ETH
         }
         
-        // Final price: BasePrice * compound_factor
-        return (basePrice * compound) / 1e18;
+        uint256 dailyInterestRate = (ethBalanceInEth * 1e18) / (2 * 10**9);
+        
+        // Calculate: Price = BasePrice * (1 + InterestRate * DaysElapsed)
+        // Multiplier = 1 + (dailyInterestRate * daysElapsed) / 1e18
+        uint256 multiplier = 1e18 + (dailyInterestRate * daysElapsed) / 1e18;
+        
+        // Final price: BasePrice * multiplier
+        return (basePrice * multiplier) / 1e18;
     }
     
     /**
@@ -164,35 +155,23 @@ contract Group13TokenSale is Ownable {
         uint256 timeInSeconds,
         uint256 timeInDays,
         uint256 dailyInterestRate,
-        uint256 compoundFactor
+        uint256 multiplier
     ) {
         uint256 ethBal = address(this).balance;
         uint256 timePassed = block.timestamp - contractCreationTime;
-        uint256 timeInDaysPrecise = timePassed * 1e18 / (1 days);
+        uint256 daysElapsed = (timePassed * 1e18) / 1 days;
         uint256 ethBalanceInEth = ethBal / 1 ether;
         uint256 dailyRate = (ethBalanceInEth * 1e18) / (2 * 10**9);
-        
-        uint256 compound = 1e18; // Default compound factor
-        
-        // Only calculate compound interest if meaningful time has passed
-        if (timePassed >= 3600) {
-            uint256 rateTimeProduct = (dailyRate * timeInDaysPrecise) / 1e18;
-            compound = 1e18 + rateTimeProduct;
-            
-            if (rateTimeProduct > 0) {
-                uint256 quadraticTerm = (rateTimeProduct * rateTimeProduct) / (2 * 1e18);
-                compound += quadraticTerm;
-            }
-        }
+        uint256 mult = 1e18 + (dailyRate * daysElapsed) / 1e18;
         
         return (
             getCurrentPrice(),
             basePrice,
             ethBal,
             timePassed,
-            timeInDaysPrecise,
+            daysElapsed,
             dailyRate,
-            compound
+            mult
         );
     }
 }
