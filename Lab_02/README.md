@@ -123,9 +123,7 @@ Check some variables of this contract:
 
 ![alt text](images/image-10.png)
 
-*This constract has custom `buyTokens` and `endSale` functions that we implemented*
-
-
+*This contract has custom `buyTokens` and `endSale` functions that we implemented*
 
 In the code, we specify the `price1 = 5 ether`, with ether keyword just a unit conversion to wei. Solidity uses wei as its base, so the price will be displayed as 5 * 10^18 wei, which as you see in the image, is 5000000000000000000.
 
@@ -210,7 +208,7 @@ uint256 public price1 = 5 ether;  // Price per token for the first 25% of tokens
 uint256 public price2 = 10 ether; // Price per token for the remaining tokens
 ```
 
-The requirement specifies that first 25% is 5 ether and next 25% is 10 ether, that is okay to deploy on local. However, I want to deploy these two contracts to the Sepolia testnet, I will change the ratio a little bit, since Sepolia testnet only gives you 0.05 ETH a day for testing. Therefore, we do not have the ETH to buy with 5 ether, 10 ether as current ratio, let's change it to 0.0005 ether and 0.001 ether. Uncomment these two lines:
+The requirement specifies that first 25% is 5 ether and next 25% is 10 ether, that is okay to deploy on local. However, I want to deploy these two contracts to the Sepolia testnet, I will change the ratio a little bit, since Sepolia testnet only gives you 0.05 ETH a day for testing. Therefore, we do not have enough ETH to buy with 5 ether, 10 ether at the current ratio, so let's change it to 0.0005 ether and 0.001 ether. Uncomment these two lines:
 
 ```solidity
 uint256 public price1 = 0.0005 ether;  // Price per token for the first 25% of tokens

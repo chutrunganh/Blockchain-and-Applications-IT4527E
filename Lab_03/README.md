@@ -1,3 +1,7 @@
+# Lab 3: Selling and buying the ERC20 token
+
+**The original and more readable Markdown version of this report can be found at the following link: https://github.com/chutrunganh/Blockchain-and-Applications-IT4527E/tree/master/Lab_03**
+
 # 1. What we will do in this lab
 
 Recall from the previous lab (Lab 02), we have created a simple ERC20 token contract with some sell constraints as follows:
@@ -28,7 +32,7 @@ In the previous lab, I have deploy my contracts in Remix online IDE, but now I w
 
 > [!NOTE] 
 > Prerequisites to run this lab:
-> - Node.js (v22 or higher) 
+> - Node.js (v22 or higher) run in WSL or Linux environment
 > - MetaMask browser extension
 
 
@@ -146,13 +150,13 @@ Then performs some initial setup:
      - Currency Symbol: `ETH`
    - Click "Save"
 
-![alt text](image.png)
+![alt text](images/image.png)
 
-![alt text](image-1.png)
+![alt text](images/image-1.png)
 
 Then REMEMBER to choose this network in MetaMask:
 
-![alt text](image-2.png)
+![alt text](images/image-2.png)
 
 
 2. **Import Test Account:**
@@ -171,13 +175,13 @@ Then REMEMBER to choose this network in MetaMask:
 
    - Click "Import"
 
-      ![alt text](image-3.png)
+      ![alt text](images/image-3.png)
 
-      ![alt text](image-4.png)
+      ![alt text](images/image-4.png)
 
       Choose `Private Key` as the import method, then paste the private key you copied from the terminal in Step 1. You can repeat this step to import more accounts if needed.
 
-      ![alt text](image-5.png)
+      ![alt text](images/image-5.png)
 
 
 
@@ -193,7 +197,7 @@ This will start the NextJS web interface for interacting with your token sale co
 
 Then, it will require you to connect your MetaMask wallet (you should already installed this browser extension). There are some basic instructions on the web interface to guide you through the process as I have mentioned in step 3.
 
-![alt text](image-6.png)
+![alt text](images/image-6.png)
 
 Click "Connect Wallet", pay attention the the current chosen Account in MetaMask, the web will connect to the account you have chosen in MetaMask. 
 
@@ -201,18 +205,18 @@ Click "Connect Wallet", pay attention the the current chosen Account in MetaMask
 
 In my case, I am at the first metamask account (the owner of the contracts), I can see the following information:
 
-![alt text](image-7.png)
+![alt text](images/image-7.png)
 
 This is the owner account, so:
 
 - The owner balance with G13 token is `50000` (50% of total supply) as we have transferred this amount to the sale contract in the `deploy.js` script.
-- The owner balance with ETH is approximately `1 000 000 000` ETH as we config each created account have 1 million ETH in the `hardhat.config.js` file. (You will see 999 999 999,.. ssince we must spend a little bit ETh when deploying the contracts).
-- The sale constract current balance (see in the green box) is `100` ETH, as we have added this amount to the sale contract in the `deploy.js` script.
+- The owner balance with ETH is approximately `1 000 000 000` ETH as we config each created account have 1 million ETH in the `hardhat.config.js` file. (You will see 999 999 999,.. since we must spend a little bit ETH when deploying the contracts).
+- The sale contract current balance (see in the green box) is `100` ETH, as we have added this amount to the sale contract in the `deploy.js` script.
 
 Now switch the account in MetaMask to the second account (the normal user account) and reconnect to the Metamask wallet (open the MetaMask extension, click on the account icon, then click "Connect"). You should see something like this:
 
 
-![alt text](image-8.png)
+![alt text](images/image-8.png)
 
 The information about the contracts are the same, but the user balance is different:
 
@@ -222,13 +226,13 @@ The information about the contracts are the same, but the user balance is differ
 
 Then try to buy for example `1000` G13 tokens:
 
-![alt text](BuyToken.gif)
+![alt text](images/BuyToken.gif)
 
 This will cost 5*1000 = `5000` ETH, and the user will pay this amount to the sale contract. The price is calculated as follows:
 
 After buying:
 
-![alt text](image-9.png)
+![alt text](images/image-9.png)
 
 
 See the new price for each token is now `5.000000218845` ETH (by default it the constract already has 100 ETH) since by the formula:
@@ -247,43 +251,43 @@ Also notice the change in the sale contract balance, it is now have `5100.0002` 
 
 Buy one more 1000 G13 tokens, we see that they need to buy with a new price that previous transaction has updated the price, now it is `5.000000218845` ETH:
 
-![alt text](image-10.png)
+![alt text](images/image-10.png)
 
 Then after buyng this, the price is updated again, it now approximately `5.00000059` ETH:
 
-![alt text](image-12.png)
+![alt text](images/image-12.png)
 
 Notice that now the ETH of the sale contract increase to `10100.00081` ETH, and the token balance of the sale contract decrease to `48000` G13 tokens (49 000 - 1000 = 48 000).
 
 See the transaction history:
 
-![alt text](image-11.png)
+![alt text](images/image-11.png)
 
 
 Now I will try to sell back to the contract account 100 G13 tokens, the price is now `5.00000059` ETH from previous transaction:
 
-![alt text](image-13.png)
+![alt text](images/image-13.png)
 
 After selling, My ETH balance  increase and the token decrease (previously after buying 100 tokens two times, I have 200 G13 tokens), selling 100 G13 tokens back to the sale contract, now I only have 1900 G13 tokens left.
 
 
-![alt text](image-14.png)
+![alt text](images/image-14.png)
 
 See the new updated price is now `5.00000066` ETH:
 
-![alt text](image-15.png)
+![alt text](images/image-15.png)
 
 The ETH balance in the sale contract is decreased but the time is also increase (more significantly) so by the formula the price is still increased, now it is `5.00000066` ETH. Let try to make the contract ETH decrease more dramatically by buying more tokens to see if the price is decreased:
 
 Selling 1000 G13 tokens back to the sale contract to make the sale contract ETH balance decrease:
 
-![alt text](image-16.png)
+![alt text](images/image-16.png)
 
 
 Recheck our balance:
 
-![alt text](image-17.png)
+![alt text](images/image-17.png)
 
 New price is now decreased to `5.00000015` ETH, which is lower than the previous price `5.00000066` ETH:
 
-![alt text](image-18.png)
+![alt text](images/image-18.png)
